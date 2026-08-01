@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "DM Sans", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", "DM Sans", "PingFang SC", ui-sans-serif, system-ui, sans-serif;
+
+  --color-surface: #f6f7f9;
+  --color-surface-elevated: #ffffff;
+  --color-ink: #0f172a;
+  --color-ink-muted: #64748b;
+  --color-line: #e2e8f0;
+  --color-accent: #0d9488;
+  --color-accent-soft: #ccfbf1;
+  --color-danger: #dc2626;
+  --color-income: #059669;
+  --color-expense: #e11d48;
+}
+
+.dark {
+  --color-surface: #0b1220;
+  --color-surface-elevated: #121a2b;
+  --color-ink: #e8eef9;
+  --color-ink-muted: #94a3b8;
+  --color-line: #1e293b;
+  --color-accent: #2dd4bf;
+  --color-accent-soft: #134e4a;
+  --color-danger: #fb7185;
+  --color-income: #34d399;
+  --color-expense: #fb7185;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background: var(--color-surface);
+    /* 禁止 iOS 双击缩放干扰，保留 pinch 由浏览器处理 */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
+    background:
+      radial-gradient(1200px 600px at 10% -10%, color-mix(in oklab, var(--color-accent) 18%, transparent), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, color-mix(in oklab, #38bdf8 12%, transparent), transparent 55%),
+      var(--color-surface);
+  }
+
+  #root {
+    min-height: 100dvh;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  /* 移动端表单控件至少约 44px 触控高度 */
+  input,
+  select,
+  textarea,
+  button {
+    touch-action: manipulation;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .panel {
+    background: color-mix(in oklab, var(--color-surface-elevated) 92%, transparent);
+    border: 1px solid var(--color-line);
+    backdrop-filter: blur(10px);
+  }
+
+  .text-muted {
+    color: var(--color-ink-muted);
+  }
+
+  /** 拇指友好触控目标（约 44×44） */
+  .touch-target {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+}
