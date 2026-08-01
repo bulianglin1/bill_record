@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { ArrowDownUp, Plus, Trash2 } from 'lucide-react'
+import { ArrowDownUp, CalendarRange, Plus, Trash2 } from 'lucide-react'
 import {
   EXPENSE_CATEGORIES,
   INCOME_CATEGORIES,
@@ -26,6 +26,8 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
   const [showForm, setShowForm] = useState(false)
   const [error, setError] = useState('')
   const [filterAccountId, setFilterAccountId] = useState('')
+  /** YYYY-MM；空字符串表示不限月份 */
+  const [filterMonth, setFilterMonth] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('date_desc')
 
   const [form, setForm] = useState({
@@ -105,13 +107,18 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
     [accounts],
   )
 
+  const filteredTransactions = useMemo(() => {
+    if (!filterMonth) return transactions
+    return transactions.filter((t) => t.date.startsWith(filterMonth))
+  }, [transactions, filterMonth])
+
   const summary = useMemo(() => {
     let income = 0
     let expense = 0
     let incomeCount = 0
     let expenseCount = 0
     let transferCount = 0
-    for (const t of transactions) {
+    for (const t of filteredTransactions) {
       if (t.type === 'income') {
         income += t.amount
         incomeCount += 1
@@ -123,7 +130,7 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
       }
     }
     return {
-      total: transactions.length,
+      total: filteredTransactions.length,
       income,
       expense,
       incomeCount,
@@ -131,10 +138,10 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
       transferCount,
       net: Math.round((income - expense) * 100) / 100,
     }
-  }, [transactions])
+  }, [filteredTransactions])
 
   const sortedTransactions = useMemo(() => {
-    const rows = [...transactions]
+    const rows = [...filteredTransactions]
     rows.sort((a, b) => {
       if (sortKey === 'date_asc') {
         if (a.date === b.date) return a.createdAt.localeCompare(b.createdAt)
@@ -153,7 +160,15 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
       return b.date.localeCompare(a.date)
     })
     return rows
-  }, [transactions, sortKey])
+  }, [filteredTransactions, sortKey])
+
+  function applyThisMonth() {
+    setFilterMonth(todayIsoDate().slice(0, 7))
+  }
+
+  function clearDateFilters() {
+    setFilterMonth('')
+  }
 
   return (
     <div className="space-y-4">
@@ -172,7 +187,7 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <select
           value={filterAccountId}
           onChange={(e) => setFilterAccountId(e.target.value)}
@@ -185,6 +200,32 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
             </option>
           ))}
         </select>
+        <label className="panel inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm">
+          <CalendarRange size={14} className="text-muted" />
+          <span className="text-muted">月份</span>
+          <input
+            type="month"
+            value={filterMonth}
+            max={todayIsoDate().slice(0, 7)}
+            onChange={(e) => setFilterMonth(e.target.value)}
+            className="bg-transparent outline-none"
+            aria-label="按月份筛选"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={applyThisMonth}
+          className="rounded-xl border border-[var(--color-line)] px-3 py-2 text-sm text-muted"
+        >
+          本月
+        </button>
+        <button
+          type="button"
+          onClick={clearDateFilters}
+          className="rounded-xl border border-[var(--color-line)] px-3 py-2 text-sm text-muted"
+        >
+          全部日期
+        </button>
         <label className="panel inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm">
           <ArrowDownUp size={14} className="text-muted" />
           <select
