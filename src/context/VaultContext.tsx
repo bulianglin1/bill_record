@@ -16,6 +16,7 @@ import { SESSION_UNLOCKED_KEY } from '@/lib/constants'
 import { db, ensureMeta, exportSnapshot } from '@/lib/db'
 import { META_ID } from '@/lib/constants'
 import { seedDefaultAccountsIfEmpty } from '@/services/accountService'
+import { recordTodayAssetSnapshotSafe } from '@/services/assetSnapshotService'
 import { refreshTransactionsFromCloud } from '@/services/transactionService'
 import type { EncryptedPayload } from '@/types'
 
@@ -59,6 +60,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     } catch {
       // 流水表未建或暂无数据时不阻断进入
     }
+    // 登录成功：写入/更新今天的总资产快照
+    await recordTodayAssetSnapshotSafe()
     passwordRef.current = password
     sessionStorage.setItem(SESSION_UNLOCKED_KEY, '1')
     setHasVault(true)

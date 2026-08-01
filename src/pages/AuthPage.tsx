@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { Mail, Lock, ShieldCheck, UserPlus, LogIn } from 'lucide-react'
+import { Mail, Lock, UserPlus, LogIn } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import clsx from 'clsx'
@@ -72,7 +72,7 @@ export function AuthPage() {
             <p className="mt-2 text-sm text-muted">
               {mode === 'login'
                 ? '登录后直接进入账本（登录密码同时用于数据加密）'
-                : '注册账号（写入 public.users，无需二次解锁密码）'}
+                : '注册账号（登录密码同时用于数据加密）'}
             </p>
           </div>
           <button
@@ -82,14 +82,6 @@ export function AuthPage() {
           >
             {theme === 'dark' ? '浅色' : '深色'}
           </button>
-        </div>
-
-        <div className="mb-5 flex items-start gap-3 rounded-2xl bg-[var(--color-accent-soft)] px-4 py-3 text-sm">
-          <ShieldCheck size={18} className="mt-0.5 shrink-0 text-[var(--color-accent)]" />
-          <span>
-            账号写入 <code>public.users</code>；登录密码同时用于加密
-            <code> vaults </code>汇总数据。流水明文写入 <code>transactions</code>，需联网。
-          </span>
         </div>
 
         <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl border border-[var(--color-line)] p-1">

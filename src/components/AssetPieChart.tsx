@@ -1,14 +1,21 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
-import type { Account } from '@/types'
 import { formatMoney } from '@/utils/format'
 
+/** 饼图只需要名称 / 余额 / 颜色（账户或快照分布均可） */
+export interface AssetPieSlice {
+  name: string
+  balance: number
+  color: string
+}
+
 interface AssetPieChartProps {
-  accounts: Account[]
+  accounts: AssetPieSlice[]
 }
 
 export function AssetPieChart({ accounts }: AssetPieChartProps) {
-  const data = accounts
+  const data = [...accounts]
     .filter((a) => a.balance > 0)
+    .sort((a, b) => b.balance - a.balance)
     .map((a) => ({
       name: a.name,
       value: a.balance,

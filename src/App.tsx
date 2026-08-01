@@ -60,7 +60,7 @@ function AppShell() {
     return <BootLoading text="正在检查登录状态…" />
   }
 
-  // 无内存登录密码时需重新登录（刷新页面后）
+  // 无用户或无会话密码时进入登录页（关标签后 sessionStorage 会清空）
   if (!isAuthenticated) {
     return <AuthPage />
   }

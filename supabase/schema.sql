@@ -1,6 +1,7 @@
 -- Bill Record 表结构（Supabase 免费版）
 -- 在 Supabase SQL Editor 中执行本文件即可完成初始化 / 升级
 -- 流水表请另行执行：supabase/transactions.sql
+-- 资产日快照请另行执行：supabase/asset_snapshots.sql
 
 create extension if not exists "pgcrypto";
 

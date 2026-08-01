@@ -6,6 +6,7 @@ import {
   replaceLocalTransactions,
 } from '@/lib/db'
 import { roundMoney } from '@/services/accountService'
+import { recordTodayAssetSnapshotSafe } from '@/services/assetSnapshotService'
 import {
   deleteCloudTransaction,
   insertCloudTransaction,
@@ -107,6 +108,7 @@ export async function createTransaction(input: TransactionInput): Promise<Transa
     throw err
   }
 
+  await recordTodayAssetSnapshotSafe()
   return tx
 }
 
@@ -125,6 +127,7 @@ export async function deleteTransaction(id: string): Promise<void> {
     await db.transactions.delete(id)
     await bumpLocalVersion()
   })
+  await recordTodayAssetSnapshotSafe()
 }
 
 /**

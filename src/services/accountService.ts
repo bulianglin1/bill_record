@@ -1,5 +1,6 @@
 import { DEFAULT_ACCOUNTS } from '@/lib/constants'
 import { bumpLocalVersion, createId, db, nowIso } from '@/lib/db'
+import { recordTodayAssetSnapshotSafe } from '@/services/assetSnapshotService'
 import type { Account, AccountType } from '@/types'
 
 export async function listAccounts(): Promise<Account[]> {
@@ -56,6 +57,7 @@ export async function createAccount(input: {
   }
   await db.accounts.add(account)
   await bumpLocalVersion()
+  await recordTodayAssetSnapshotSafe()
   return account
 }
 
@@ -70,6 +72,7 @@ export async function updateAccount(
   if (patch.color !== undefined) updates.color = patch.color
   await db.accounts.update(id, updates)
   await bumpLocalVersion()
+  await recordTodayAssetSnapshotSafe()
 }
 
 export async function deleteAccount(id: string): Promise<void> {
@@ -79,6 +82,7 @@ export async function deleteAccount(id: string): Promise<void> {
   }
   await db.accounts.delete(id)
   await bumpLocalVersion()
+  await recordTodayAssetSnapshotSafe()
 }
 
 export function roundMoney(value: number): number {

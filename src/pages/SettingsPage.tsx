@@ -18,6 +18,7 @@ import { listAccounts } from '@/services/accountService'
 import { bulkImportTransactions } from '@/services/transactionService'
 import { getImporter } from '@/utils/import'
 import type { Account, AppMeta } from '@/types'
+import { formatDateTime } from '@/utils/format'
 
 export function SettingsPage() {
   const { user, signOut } = useAuth()
@@ -158,7 +159,11 @@ export function SettingsPage() {
           </div>
           <div className="sm:col-span-2">
             <dt className="text-muted">上次同步</dt>
-            <dd className="font-medium">{meta?.lastSyncedAt ?? '尚未同步'}</dd>
+            <dd className="font-medium">
+              {meta?.lastSyncedAt
+                ? formatDateTime(meta.lastSyncedAt)
+                : '尚未同步'}
+            </dd>
           </div>
         </dl>
       </section>

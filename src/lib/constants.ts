@@ -18,6 +18,12 @@ export const AES_IV_LENGTH = 12
 /** 会话存储 Key：标记已解锁（不存密码明文） */
 export const SESSION_UNLOCKED_KEY = 'bill_record_unlocked'
 
+/**
+ * 会话存储 Key：登录密码（仅 sessionStorage，同标签页刷新可续登；关标签即清）
+ * 用于 vaults AES；勿改 localStorage，避免长期落盘明文密码。
+ */
+export const SESSION_LOGIN_PASSWORD_KEY = 'bill_record_login_password'
+
 /** 主题存储 Key */
 export const THEME_STORAGE_KEY = 'bill_record_theme'
 
