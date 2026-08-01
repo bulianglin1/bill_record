@@ -1,8 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Activity,
   ArrowDownRight,
   ArrowUpRight,
+  ChevronLeft,
+  ChevronRight,
   Minus,
   TrendingDown,
   TrendingUp,
@@ -19,6 +21,7 @@ import {
   listMonthlyLastSnapshots,
   shiftMonth,
   type AssetDistributionItem,
+  type AssetSnapshot,
   type MonthAssetPoint,
 } from '@/services/cloudAssetSnapshotService'
 import { recordTodayAssetSnapshotSafe } from '@/services/assetSnapshotService'
@@ -33,16 +36,44 @@ interface DashboardPageProps {
   refreshKey?: number
 }
 
+/** 生成可选月份列表（含当前月，向前共 months 个月） */
+function buildMonthOptions(endMonth: string, months = 18): string[] {
+  const list: string[] = []
+  for (let i = months - 1; i >= 0; i -= 1) {
+    list.push(shiftMonth(endMonth, -i))
+  }
+  return list
+}
+
+function sumMonthStats(txs: Transaction[], yearMonth: string) {
+  let income = 0
+  let expense = 0
+  for (const t of txs) {
+    if (!t.date.startsWith(yearMonth)) continue
+    if (t.type === 'income') income += t.amount
+    if (t.type === 'expense') expense += t.amount
+  }
+  return { income, expense }
+}
+
+function formatMonthLabel(yearMonth: string): string {
+  const [y, m] = yearMonth.split('-')
+  return `${y}年${Number(m)}月`
+}
+
 export function DashboardPage({ refreshKey = 0 }: DashboardPageProps) {
+  const thisMonth = currentYearMonth()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [recent, setRecent] = useState<Transaction[]>([])
   const [allTx, setAllTx] = useState<Transaction[]>([])
-  const [monthStats, setMonthStats] = useState({ income: 0, expense: 0 })
+  const [selectedMonth, setSelectedMonth] = useState(thisMonth)
   const [monthPoints, setMonthPoints] = useState<MonthAssetPoint[]>([])
-  const [prevMonthAssets, setPrevMonthAssets] = useState<number | null>(null)
-  const [prevMonthLabel, setPrevMonthLabel] = useState('')
-  const [prevSnapshotDate, setPrevSnapshotDate] = useState('')
-  const [prevDistribution, setPrevDistribution] = useState<AssetDistributionItem[]>([])
+  const [selectedSnap, setSelectedSnap] = useState<AssetSnapshot | null>(null)
+  const [compareSnap, setCompareSnap] = useState<AssetSnapshot | null>(null)
+
+  const monthOptions = useMemo(() => buildMonthOptions(thisMonth, 18), [thisMonth])
+  const compareMonth = shiftMonth(selectedMonth, -1)
+  const isCurrentMonth = selectedMonth === thisMonth
 
   useEffect(() => {
     void (async () => {
@@ -57,61 +88,136 @@ export function DashboardPage({ refreshKey = 0 }: DashboardPageProps) {
       setAllTx(all)
       setRecent(all.slice(0, 8))
 
-      // 刷新当天快照（总资产变动后看板也会再记一次）
       await recordTodayAssetSnapshotSafe()
 
-      const monthKey = currentYearMonth()
-      let income = 0
-      let expense = 0
-      for (const t of all) {
-        if (!t.date.startsWith(monthKey)) continue
-        if (t.type === 'income') income += t.amount
-        if (t.type === 'expense') expense += t.amount
-      }
-      setMonthStats({ income, expense })
-
       try {
-        const prevKey = shiftMonth(monthKey, -1)
-        const [points, prevSnap] = await Promise.all([
-          listMonthlyLastSnapshots(12),
-          getLatestSnapshotInMonth(prevKey),
-        ])
-        setMonthPoints(points)
-        setPrevMonthLabel(prevKey)
-        if (prevSnap) {
-          setPrevMonthAssets(prevSnap.totalAssets)
-          setPrevSnapshotDate(prevSnap.snapshotDate)
-          setPrevDistribution(prevSnap.distribution)
-        } else {
-          setPrevMonthAssets(null)
-          setPrevSnapshotDate('')
-          setPrevDistribution([])
-        }
+        setMonthPoints(await listMonthlyLastSnapshots(12))
       } catch {
         setMonthPoints([])
-        setPrevMonthAssets(null)
-        setPrevDistribution([])
       }
     })()
   }, [refreshKey])
 
+  // 切换月份时拉取该月 / 对比月快照
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [snap, prev] = await Promise.all([
+          getLatestSnapshotInMonth(selectedMonth),
+          getLatestSnapshotInMonth(compareMonth),
+        ])
+        setSelectedSnap(snap)
+        setCompareSnap(prev)
+      } catch {
+        setSelectedSnap(null)
+        setCompareSnap(null)
+      }
+    })()
+  }, [selectedMonth, compareMonth, refreshKey])
+
+  const monthStats = useMemo(
+    () => sumMonthStats(allTx, selectedMonth),
+    [allTx, selectedMonth],
+  )
+  const compareStats = useMemo(
+    () => sumMonthStats(allTx, compareMonth),
+    [allTx, compareMonth],
+  )
+
   const total = sumBalances(accounts)
+  /** 所选月展示用总资产：当月用实时余额，历史月用该月末快照 */
+  const displayAssets = isCurrentMonth
+    ? total
+    : (selectedSnap?.totalAssets ?? null)
+  const compareAssets = compareSnap?.totalAssets ?? null
   const delta =
-    prevMonthAssets === null ? null : Math.round((total - prevMonthAssets) * 100) / 100
+    displayAssets === null || compareAssets === null
+      ? null
+      : Math.round((displayAssets - compareAssets) * 100) / 100
+
+  const selectedDistribution: AssetDistributionItem[] = isCurrentMonth
+    ? accounts.map((a) => ({
+        accountId: a.id,
+        name: a.name,
+        type: a.type,
+        balance: a.balance,
+        currency: a.currency,
+        color: a.color,
+      }))
+    : (selectedSnap?.distribution ?? [])
+
+  const minMonth = monthOptions[0]!
+  const canGoPrev = selectedMonth > minMonth
+  const canGoNext = selectedMonth < thisMonth
+
+  function goMonth(deltaMonths: number) {
+    const next = shiftMonth(selectedMonth, deltaMonths)
+    if (next > thisMonth || next < minMonth) return
+    setSelectedMonth(next)
+  }
 
   return (
     <div className="space-y-4 md:space-y-6">
       <section className="panel rounded-3xl p-4 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted">查看月份</p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={!canGoPrev}
+              onClick={() => goMonth(-1)}
+              className="rounded-xl border border-[var(--color-line)] p-2 text-muted disabled:opacity-40"
+              aria-label="上一月"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <input
+              type="month"
+              value={selectedMonth}
+              max={thisMonth}
+              min={monthOptions[0]}
+              onChange={(e) => {
+                const v = e.target.value
+                if (v && v <= thisMonth) setSelectedMonth(v)
+              }}
+              className="rounded-xl border border-[var(--color-line)] bg-transparent px-3 py-2 text-sm font-medium"
+            />
+            <button
+              type="button"
+              disabled={!canGoNext}
+              onClick={() => goMonth(1)}
+              className="rounded-xl border border-[var(--color-line)] p-2 text-muted disabled:opacity-40"
+              aria-label="下一月"
+            >
+              <ChevronRight size={18} />
+            </button>
+            {!isCurrentMonth && (
+              <button
+                type="button"
+                onClick={() => setSelectedMonth(thisMonth)}
+                className="rounded-xl border border-[var(--color-line)] px-3 py-2 text-xs text-muted"
+              >
+                回到本月
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-sm text-muted">总资产（当前）</p>
-            <p className="font-display mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">
-              {formatMoney(total)}
+            <p className="text-sm text-muted">
+              {isCurrentMonth
+                ? '总资产（当前）'
+                : `总资产（${formatMonthLabel(selectedMonth)}末快照）`}
             </p>
-            {prevMonthAssets !== null && delta !== null ? (
+            <p className="font-display mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">
+              {displayAssets === null ? '暂无快照' : formatMoney(displayAssets)}
+            </p>
+            {compareAssets !== null && delta !== null ? (
               <p className="mt-2 flex flex-wrap items-center gap-1.5 text-sm">
                 <span className="text-muted">
-                  较上月末（{prevMonthLabel}，快照 {prevSnapshotDate}）
+                  较{formatMonthLabel(compareMonth)}末
+                  {compareSnap ? `（${compareSnap.snapshotDate}）` : ''}
                 </span>
                 <span
                   className={
@@ -131,25 +237,36 @@ export function DashboardPage({ refreshKey = 0 }: DashboardPageProps) {
                   )}
                   {formatMoney(delta, { sign: true })}
                 </span>
-                <span className="text-muted">上月 {formatMoney(prevMonthAssets)}</span>
               </p>
             ) : (
               <p className="mt-2 text-sm text-muted">
-                暂无上月快照。持续使用后将按「每月最晚一天」对比。
+                暂无{formatMonthLabel(compareMonth)}快照，无法对比。
               </p>
             )}
           </div>
-          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:gap-3">
+          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto">
             <StatChip
               icon={<TrendingUp size={16} />}
-              label="本月收入"
+              label={`${formatMonthLabel(selectedMonth)}收入`}
               value={formatMoney(monthStats.income)}
               tone="income"
             />
             <StatChip
               icon={<TrendingDown size={16} />}
-              label="本月支出"
+              label={`${formatMonthLabel(selectedMonth)}支出`}
               value={formatMoney(monthStats.expense)}
+              tone="expense"
+            />
+            <StatChip
+              icon={<TrendingUp size={16} />}
+              label={`${formatMonthLabel(compareMonth)}收入`}
+              value={formatMoney(compareStats.income)}
+              tone="income"
+            />
+            <StatChip
+              icon={<TrendingDown size={16} />}
+              label={`${formatMonthLabel(compareMonth)}支出`}
+              value={formatMoney(compareStats.expense)}
               tone="expense"
             />
           </div>
@@ -162,40 +279,63 @@ export function DashboardPage({ refreshKey = 0 }: DashboardPageProps) {
           <h2 className="font-display text-lg font-semibold">每月总资产</h2>
         </div>
         <p className="mb-3 text-xs text-muted">
-          每天登录或改动资产时更新当日快照（含各账户余额）；每月取该月最晚一天画点，点选可看明细。
+          点选折线可切换查看月份；也可使用上方月份选择器。
         </p>
-        <AssetMonthChart points={monthPoints} />
+        <AssetMonthChart
+          points={monthPoints}
+          selectedMonth={selectedMonth}
+          onSelectMonth={setSelectedMonth}
+        />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="panel rounded-3xl p-4 sm:p-5">
           <div className="mb-2 flex items-center gap-2">
             <Wallet size={18} className="text-[var(--color-accent)]" />
-            <h2 className="font-display text-lg font-semibold">当前资产分布</h2>
+            <h2 className="font-display text-lg font-semibold">
+              {isCurrentMonth
+                ? '当前资产分布'
+                : `${formatMonthLabel(selectedMonth)}资产分布`}
+            </h2>
           </div>
-          <AssetPieChart accounts={accounts} />
-          <DistributionList
-            items={accounts.map((a) => ({
-              key: a.id,
-              name: a.name,
-              balance: a.balance,
-              color: a.color,
-            }))}
-          />
+          {!isCurrentMonth && selectedSnap && (
+            <p className="mb-1 text-xs text-muted">
+              快照日 {selectedSnap.snapshotDate}
+            </p>
+          )}
+          {!isCurrentMonth && !selectedSnap ? (
+            <p className="py-10 text-center text-sm text-muted">
+              该月暂无资产快照
+            </p>
+          ) : (
+            <>
+              <AssetPieChart accounts={selectedDistribution} />
+              <DistributionList
+                items={selectedDistribution.map((a) => ({
+                  key: a.accountId || a.name,
+                  name: a.name,
+                  balance: a.balance,
+                  color: a.color,
+                }))}
+              />
+            </>
+          )}
         </div>
 
-        {prevDistribution.length > 0 ? (
+        {compareSnap && compareSnap.distribution.length > 0 ? (
           <div className="panel rounded-3xl p-4 sm:p-5">
             <div className="mb-2 flex items-center gap-2">
               <Wallet size={18} className="text-[var(--color-accent)]" />
               <h2 className="font-display text-lg font-semibold">
-                上月末分布（{prevMonthLabel}）
+                {formatMonthLabel(compareMonth)}末分布
               </h2>
             </div>
-            <p className="mb-1 text-xs text-muted">快照日 {prevSnapshotDate}</p>
-            <AssetPieChart accounts={prevDistribution} />
+            <p className="mb-1 text-xs text-muted">
+              快照日 {compareSnap.snapshotDate}
+            </p>
+            <AssetPieChart accounts={compareSnap.distribution} />
             <DistributionList
-              items={prevDistribution.map((a) => ({
+              items={compareSnap.distribution.map((a) => ({
                 key: a.accountId || a.name,
                 name: a.name,
                 balance: a.balance,
@@ -215,7 +355,7 @@ export function DashboardPage({ refreshKey = 0 }: DashboardPageProps) {
       </section>
 
       <section className="space-y-3">
-        <h2 className="font-display text-lg font-semibold">账户余额</h2>
+        <h2 className="font-display text-lg font-semibold">账户余额（当前）</h2>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {accounts.map((account) => (
             <AccountCard key={account.id} account={account} />
@@ -230,7 +370,10 @@ export function DashboardPage({ refreshKey = 0 }: DashboardPageProps) {
         ) : (
           <ul className="divide-y divide-[var(--color-line)]">
             {recent.map((t) => (
-              <li key={t.id} className="flex min-h-12 items-center justify-between gap-3 py-3 text-sm">
+              <li
+                key={t.id}
+                className="flex min-h-12 items-center justify-between gap-3 py-3 text-sm"
+              >
                 <div className="min-w-0">
                   <p className="truncate font-medium">{t.category || '未分类'}</p>
                   <p className="truncate text-muted">

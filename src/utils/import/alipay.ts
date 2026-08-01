@@ -89,20 +89,27 @@ function mapRow(cols: string[], headers: string[]): ParsedCsvRow | null {
   }
 
   const date = dateRaw.slice(0, 10).replace(/\//g, '-')
-  const note = [counterparty, product, noteRaw].filter(Boolean).join(' · ')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return null
+  }
+
+  const note = [counterparty, product, noteRaw]
+    .map((s) => s.trim())
+    .filter((s) => s && s !== '/')
+    .join(' · ')
 
   return {
     date,
     amount,
     type: isIncome ? 'income' : 'expense',
-    category,
+    category: category || '其他',
     note,
   }
 }
 
 export const alipayImporter: BillImporter = {
   source: 'alipay',
-  label: '支付宝账单 CSV',
+  label: '支付宝账单',
 
   async parse(csvText: string, accountId: string): Promise<ImportResult> {
     const errors: string[] = []
@@ -117,18 +124,21 @@ export const alipayImporter: BillImporter = {
       return {
         success: false,
         transactions: [],
-        errors: ['未识别到支付宝账单表头，请确认导出的是 CSV 原文件'],
+        errors: [
+          '未识别到支付宝账单表头。请使用支付宝导出的 CSV 原文件（多为 GBK 编码，应用已自动识别）。',
+        ],
         skipped: 0,
       }
     }
 
+    // 支付宝导出表头常带尾逗号，产生空列名，保留索引对齐即可
     const headers = splitCsvLine(lines[headerIdx]!)
     const transactions: ImportResult['transactions'] = []
     let skipped = 0
 
     for (let i = headerIdx + 1; i < lines.length; i += 1) {
       const cols = splitCsvLine(lines[i]!)
-      if (cols.length < 3) {
+      if (cols.filter(Boolean).length < 3) {
         skipped += 1
         continue
       }

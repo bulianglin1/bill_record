@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   CartesianGrid,
   Line,
@@ -16,6 +16,9 @@ import { formatMoney } from '@/utils/format'
 
 interface AssetMonthChartProps {
   points: MonthAssetPoint[]
+  /** 受控选中月份 YYYY-MM */
+  selectedMonth?: string
+  onSelectMonth?: (month: string) => void
 }
 
 interface ChartRow {
@@ -27,7 +30,11 @@ interface ChartRow {
 }
 
 /** 各月「最晚一天」总资产折线；点选后展示当时账户明细 */
-export function AssetMonthChart({ points }: AssetMonthChartProps) {
+export function AssetMonthChart({
+  points,
+  selectedMonth: controlledMonth,
+  onSelectMonth,
+}: AssetMonthChartProps) {
   const data = useMemo<ChartRow[]>(
     () =>
       points.map((p) => ({
@@ -40,11 +47,24 @@ export function AssetMonthChart({ points }: AssetMonthChartProps) {
     [points],
   )
 
-  const [selectedMonth, setSelectedMonth] = useState<string | null>(
-    () => data[data.length - 1]?.month ?? null,
+  const [innerMonth, setInnerMonth] = useState<string | null>(
+    () => controlledMonth ?? data[data.length - 1]?.month ?? null,
   )
 
-  const selected = data.find((d) => d.month === selectedMonth) ?? data[data.length - 1]
+  useEffect(() => {
+    if (controlledMonth) {
+      setInnerMonth(controlledMonth)
+    }
+  }, [controlledMonth])
+
+  const selectedMonth = controlledMonth ?? innerMonth
+  const selected =
+    data.find((d) => d.month === selectedMonth) ?? data[data.length - 1]
+
+  function selectMonth(month: string) {
+    setInnerMonth(month)
+    onSelectMonth?.(month)
+  }
 
   if (points.length === 0) {
     return (
@@ -65,7 +85,7 @@ export function AssetMonthChart({ points }: AssetMonthChartProps) {
               const payload = (
                 state as { activePayload?: Array<{ payload?: ChartRow }> } | undefined
               )?.activePayload?.[0]?.payload
-              if (payload?.month) setSelectedMonth(payload.month)
+              if (payload?.month) selectMonth(payload.month)
             }}
           >
             <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" />

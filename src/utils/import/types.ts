@@ -12,6 +12,10 @@ export interface BillImporter {
    * @param accountId 导入到的目标账户 ID
    */
   parse(csvText: string, accountId: string): Promise<ImportResult>
+  /**
+   * 解析已拆好的二维表（Excel）。未实现时由调用方提示换 CSV。
+   */
+  parseTable?(rows: string[][], accountId: string): Promise<ImportResult>
 }
 
 export interface ParsedCsvRow {

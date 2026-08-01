@@ -17,6 +17,7 @@ import { autoSync, pullFromCloud, pushToCloud } from '@/lib/sync'
 import { listAccounts } from '@/services/accountService'
 import { bulkImportTransactions } from '@/services/transactionService'
 import { getImporter } from '@/utils/import'
+import { readBillFile } from '@/utils/import/readBillFile'
 import type { Account, AppMeta } from '@/types'
 import { formatDateTime } from '@/utils/format'
 
@@ -30,13 +31,24 @@ export function SettingsPage() {
   const [importSource, setImportSource] = useState<'wechat' | 'alipay'>('wechat')
   const [importAccountId, setImportAccountId] = useState('')
 
+  function pickDefaultImportAccount(
+    accs: Account[],
+    source: 'wechat' | 'alipay',
+    currentId: string,
+  ): string {
+    if (currentId && accs.some((a) => a.id === currentId)) {
+      return currentId
+    }
+    const preferName = source === 'wechat' ? '微信' : '支付宝'
+    const hit = accs.find((a) => a.name === preferName)
+    return hit?.id ?? accs[0]?.id ?? ''
+  }
+
   async function refresh() {
     setMeta(await ensureMeta())
     const accs = await listAccounts()
     setAccounts(accs)
-    if (!importAccountId && accs[0]) {
-      setImportAccountId(accs[0].id)
-    }
+    setImportAccountId((prev) => pickDefaultImportAccount(accs, importSource, prev))
   }
 
   useEffect(() => {
@@ -95,11 +107,24 @@ export function SettingsPage() {
       if (!importAccountId) {
         throw new Error('请先选择导入目标账户')
       }
-      const text = await file.text()
       const importer = getImporter(importSource)
-      const result = await importer.parse(text, importAccountId)
+      const payload = await readBillFile(file)
+      let result
+      if (payload.kind === 'table') {
+        if (!importer.parseTable) {
+          throw new Error(`${importer.label}暂不支持 Excel，请导出 CSV 后再试`)
+        }
+        result = await importer.parseTable(payload.rows, importAccountId)
+      } else {
+        result = await importer.parse(payload.text, importAccountId)
+      }
       if (!result.success && result.transactions.length === 0) {
         throw new Error(result.errors[0] ?? '解析失败')
+      }
+      if (result.transactions.length === 0) {
+        throw new Error(
+          `未解析到可导入流水（跳过 ${result.skipped} 笔）。请确认来源选对且文件为微信导出账单。`,
+        )
       }
       const count = await bulkImportTransactions(result.transactions)
       setMessage(
@@ -205,15 +230,20 @@ export function SettingsPage() {
       <section className="panel space-y-3 rounded-3xl p-5">
         <h2 className="font-display text-lg font-semibold">账单导入</h2>
         <p className="text-sm text-muted">
-          预留微信 / 支付宝 CSV 解析接口。导出账单后选择对应来源与目标账户即可导入。
+          微信支持 xlsx/csv；支付宝支持导出 CSV（GBK 编码可直接导入）。请选对来源与目标账户。
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           <select
             value={importSource}
-            onChange={(e) => setImportSource(e.target.value as 'wechat' | 'alipay')}
+            onChange={(e) => {
+              const source = e.target.value as 'wechat' | 'alipay'
+              setImportSource(source)
+              // 切换来源时优先落到同名账户（微信 / 支付宝）
+              setImportAccountId(pickDefaultImportAccount(accounts, source, ''))
+            }}
             className="min-h-11 rounded-xl border border-[var(--color-line)] bg-transparent px-3 py-2 text-sm"
           >
-            <option value="wechat">微信账单 CSV</option>
+            <option value="wechat">微信账单（xlsx / csv）</option>
             <option value="alipay">支付宝账单 CSV</option>
           </select>
           <select
@@ -230,10 +260,14 @@ export function SettingsPage() {
         </div>
         <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-[var(--color-line)] px-4 py-2 text-sm">
           <FileUp size={16} />
-          选择 CSV 文件
+          {busy ? '导入中…' : importSource === 'wechat' ? '选择微信账单文件' : '选择支付宝 CSV'}
           <input
             type="file"
-            accept=".csv,text/csv"
+            accept={
+              importSource === 'wechat'
+                ? '.xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv'
+                : '.csv,text/csv'
+            }
             className="hidden"
             disabled={busy}
             onChange={(e) => void handleImportFile(e)}

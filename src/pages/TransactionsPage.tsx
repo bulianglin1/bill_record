@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { ArrowDownUp, Plus, Trash2 } from 'lucide-react'
 import {
   EXPENSE_CATEGORIES,
   INCOME_CATEGORIES,
@@ -18,12 +18,15 @@ interface TransactionsPageProps {
   refreshKey?: number
 }
 
+type SortKey = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'
+
 export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [showForm, setShowForm] = useState(false)
   const [error, setError] = useState('')
   const [filterAccountId, setFilterAccountId] = useState('')
+  const [sortKey, setSortKey] = useState<SortKey>('date_desc')
 
   const [form, setForm] = useState({
     date: todayIsoDate(),
@@ -102,6 +105,56 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
     [accounts],
   )
 
+  const summary = useMemo(() => {
+    let income = 0
+    let expense = 0
+    let incomeCount = 0
+    let expenseCount = 0
+    let transferCount = 0
+    for (const t of transactions) {
+      if (t.type === 'income') {
+        income += t.amount
+        incomeCount += 1
+      } else if (t.type === 'expense') {
+        expense += t.amount
+        expenseCount += 1
+      } else {
+        transferCount += 1
+      }
+    }
+    return {
+      total: transactions.length,
+      income,
+      expense,
+      incomeCount,
+      expenseCount,
+      transferCount,
+      net: Math.round((income - expense) * 100) / 100,
+    }
+  }, [transactions])
+
+  const sortedTransactions = useMemo(() => {
+    const rows = [...transactions]
+    rows.sort((a, b) => {
+      if (sortKey === 'date_asc') {
+        if (a.date === b.date) return a.createdAt.localeCompare(b.createdAt)
+        return a.date.localeCompare(b.date)
+      }
+      if (sortKey === 'amount_desc') {
+        if (a.amount !== b.amount) return b.amount - a.amount
+        return b.date.localeCompare(a.date)
+      }
+      if (sortKey === 'amount_asc') {
+        if (a.amount !== b.amount) return a.amount - b.amount
+        return b.date.localeCompare(a.date)
+      }
+      // date_desc（默认）
+      if (a.date === b.date) return b.createdAt.localeCompare(a.createdAt)
+      return b.date.localeCompare(a.date)
+    })
+    return rows
+  }, [transactions, sortKey])
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -132,7 +185,40 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
             </option>
           ))}
         </select>
+        <label className="panel inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm">
+          <ArrowDownUp size={14} className="text-muted" />
+          <select
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as SortKey)}
+            className="bg-transparent outline-none"
+            aria-label="排序"
+          >
+            <option value="date_desc">日期从新到旧</option>
+            <option value="date_asc">日期从旧到新</option>
+            <option value="amount_desc">金额从大到小</option>
+            <option value="amount_asc">金额从小到大</option>
+          </select>
+        </label>
       </div>
+
+      <section className="panel grid grid-cols-2 gap-3 rounded-3xl p-4 sm:grid-cols-4">
+        <SummaryItem label="笔数" value={`${summary.total} 笔`} />
+        <SummaryItem
+          label={`收入（${summary.incomeCount}）`}
+          value={formatMoney(summary.income)}
+          tone="income"
+        />
+        <SummaryItem
+          label={`支出（${summary.expenseCount}）`}
+          value={formatMoney(summary.expense)}
+          tone="expense"
+        />
+        <SummaryItem
+          label="结余"
+          value={formatMoney(summary.net, { sign: true })}
+          tone={summary.net >= 0 ? 'income' : 'expense'}
+        />
+      </section>
 
       {showForm && (
         <form onSubmit={handleSubmit} className="panel space-y-3 rounded-3xl p-5">
@@ -258,11 +344,11 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
       )}
 
       <div className="panel overflow-hidden rounded-3xl">
-        {transactions.length === 0 ? (
+        {sortedTransactions.length === 0 ? (
           <p className="p-6 text-sm text-muted">暂无流水</p>
         ) : (
           <ul className="divide-y divide-[var(--color-line)]">
-            {transactions.map((t) => (
+            {sortedTransactions.map((t) => (
               <li key={t.id} className="flex items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -329,5 +415,32 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span className="mb-1.5 block text-muted">{label}</span>
       {children}
     </label>
+  )
+}
+
+function SummaryItem({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone?: 'income' | 'expense'
+}) {
+  return (
+    <div>
+      <p className="text-xs text-muted">{label}</p>
+      <p
+        className={
+          tone === 'income'
+            ? 'mt-1 text-sm font-medium text-[var(--color-income)]'
+            : tone === 'expense'
+              ? 'mt-1 text-sm font-medium text-[var(--color-expense)]'
+              : 'mt-1 text-sm font-medium'
+        }
+      >
+        {value}
+      </p>
+    </div>
   )
 }
