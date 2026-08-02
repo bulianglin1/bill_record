@@ -4,6 +4,7 @@
  * 每条同时保存当时各账户余额分布（distribution）。
  */
 import { requireSessionUserId } from '@/lib/authSession'
+import { dedupeAsync } from '@/lib/dedupeAsync'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import { listAccounts, sumBalances } from '@/services/accountService'
 import type { Account, AccountType } from '@/types'
@@ -161,56 +162,85 @@ export async function getLatestSnapshotInMonth(
   }
 }
 
+/** 从月度点构造展示用快照（无 id 时用 snapshotDate 占位） */
+export function snapshotFromMonthPoint(
+  point: MonthAssetPoint | undefined,
+): AssetSnapshot | null {
+  if (!point) return null
+  return {
+    id: point.snapshotDate,
+    userId: '',
+    snapshotDate: point.snapshotDate,
+    totalAssets: point.totalAssets,
+    distribution: point.distribution,
+    updatedAt: '',
+  }
+}
+
+/** 在月度列表中查找某月快照 */
+export function findMonthPoint(
+  points: MonthAssetPoint[],
+  yearMonth: string,
+): MonthAssetPoint | undefined {
+  return points.find((p) => p.month === yearMonth)
+}
+
 /** 近 N 个月：每月取该月最晚一天的快照（用于折线） */
 export async function listMonthlyLastSnapshots(
   months = 12,
 ): Promise<MonthAssetPoint[]> {
-  const client = requireClient()
   const userId = requireSessionUserId()
-  const endMonth = currentYearMonth()
-  const startMonth = shiftMonth(endMonth, -(months - 1))
-  const { start } = monthDateRange(startMonth)
-  const { end } = monthDateRange(endMonth)
+  return dedupeAsync(`asset_snapshots:monthly:${userId}:${months}`, async () => {
+    const client = requireClient()
+    const endMonth = currentYearMonth()
+    const startMonth = shiftMonth(endMonth, -(months - 1))
+    const { start } = monthDateRange(startMonth)
+    const { end } = monthDateRange(endMonth)
 
-  const { data, error } = await client
-    .from('asset_snapshots')
-    .select('snapshot_date, total_assets, distribution')
-    .eq('user_id', userId)
-    .gte('snapshot_date', start)
-    .lte('snapshot_date', end)
-    .order('snapshot_date', { ascending: true })
+    const { data, error } = await client
+      .from('asset_snapshots')
+      .select('snapshot_date, total_assets, distribution')
+      .eq('user_id', userId)
+      .gte('snapshot_date', start)
+      .lte('snapshot_date', end)
+      .order('snapshot_date', { ascending: true })
 
-  if (error) {
-    throw new Error(`拉取资产快照失败: ${error.message}`)
-  }
+    if (error) {
+      throw new Error(`拉取资产快照失败: ${error.message}`)
+    }
 
-  const byMonth = new Map<
-    string,
-    { snapshotDate: string; totalAssets: number; distribution: AssetDistributionItem[] }
-  >()
-  for (const row of data ?? []) {
-    const date = String(row.snapshot_date).slice(0, 10)
-    const month = date.slice(0, 7)
-    // 按日期升序遍历，后者覆盖前者 → 留下该月最晚一天
-    byMonth.set(month, {
-      snapshotDate: date,
-      totalAssets: Number(row.total_assets),
-      distribution: parseDistribution(row.distribution),
-    })
-  }
-
-  const points: MonthAssetPoint[] = []
-  for (let i = 0; i < months; i += 1) {
-    const month = shiftMonth(startMonth, i)
-    const hit = byMonth.get(month)
-    if (hit) {
-      points.push({
-        month,
-        snapshotDate: hit.snapshotDate,
-        totalAssets: hit.totalAssets,
-        distribution: hit.distribution,
+    const byMonth = new Map<
+      string,
+      {
+        snapshotDate: string
+        totalAssets: number
+        distribution: AssetDistributionItem[]
+      }
+    >()
+    for (const row of data ?? []) {
+      const date = String(row.snapshot_date).slice(0, 10)
+      const month = date.slice(0, 7)
+      // 按日期升序遍历，后者覆盖前者 → 留下该月最晚一天
+      byMonth.set(month, {
+        snapshotDate: date,
+        totalAssets: Number(row.total_assets),
+        distribution: parseDistribution(row.distribution),
       })
     }
-  }
-  return points
+
+    const points: MonthAssetPoint[] = []
+    for (let i = 0; i < months; i += 1) {
+      const month = shiftMonth(startMonth, i)
+      const hit = byMonth.get(month)
+      if (hit) {
+        points.push({
+          month,
+          snapshotDate: hit.snapshotDate,
+          totalAssets: hit.totalAssets,
+          distribution: hit.distribution,
+        })
+      }
+    }
+    return points
+  })
 }

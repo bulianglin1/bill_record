@@ -2,6 +2,7 @@
  * Supabase public.transactions 明文流水（记账即时写入）。
  */
 import { requireSessionUserId } from '@/lib/authSession'
+import { dedupeAsync } from '@/lib/dedupeAsync'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import { monthDateRange } from '@/services/cloudAssetSnapshotService'
 import type { Transaction } from '@/types'
@@ -137,48 +138,61 @@ export async function getCloudTransaction(id: string): Promise<Transaction | nul
 
 /**
  * 按条件拉取云端流水（user_id + 可选月份/日期/账户/条数）。
+ * 相同条件的进行中请求会合并，避免 Strict Mode 双挂载重复打网。
  */
 export async function listCloudTransactions(
   options?: ListCloudTransactionsOptions,
 ): Promise<Transaction[]> {
-  const client = requireClient()
   const userId = requireSessionUserId()
+  const key = [
+    'transactions:list',
+    userId,
+    options?.yearMonth ?? '',
+    options?.startDate ?? '',
+    options?.endDate ?? '',
+    options?.accountId ?? '',
+    options?.limit ?? '',
+  ].join(':')
 
-  let query = client
-    .from('transactions')
-    .select('*')
-    .eq('user_id', userId)
+  return dedupeAsync(key, async () => {
+    const client = requireClient()
 
-  if (options?.yearMonth) {
-    const { start, end } = monthDateRange(options.yearMonth)
-    query = query.gte('date', start).lte('date', end)
-  } else {
-    if (options?.startDate) {
-      query = query.gte('date', options.startDate)
+    let query = client
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId)
+
+    if (options?.yearMonth) {
+      const { start, end } = monthDateRange(options.yearMonth)
+      query = query.gte('date', start).lte('date', end)
+    } else {
+      if (options?.startDate) {
+        query = query.gte('date', options.startDate)
+      }
+      if (options?.endDate) {
+        query = query.lte('date', options.endDate)
+      }
     }
-    if (options?.endDate) {
-      query = query.lte('date', options.endDate)
+
+    if (options?.accountId) {
+      const accountId = options.accountId
+      query = query.or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`)
     }
-  }
 
-  if (options?.accountId) {
-    const accountId = options.accountId
-    query = query.or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`)
-  }
+    query = query
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
 
-  query = query
-    .order('date', { ascending: false })
-    .order('created_at', { ascending: false })
+    if (options?.limit !== undefined) {
+      query = query.limit(options.limit)
+    }
 
-  if (options?.limit !== undefined) {
-    query = query.limit(options.limit)
-  }
+    const { data, error } = await query
 
-  const { data, error } = await query
+    if (error) {
+      throw new Error(`拉取云端流水失败: ${error.message}`)
+    }
 
-  if (error) {
-    throw new Error(`拉取云端流水失败: ${error.message}`)
-  }
-
-  return ((data as CloudTransactionRow[]) ?? []).map(fromRow)
+    return ((data as CloudTransactionRow[]) ?? []).map(fromRow)
+  })
 }

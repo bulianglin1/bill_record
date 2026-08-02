@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Activity,
   ArrowDownRight,
@@ -17,20 +17,24 @@ import { TrendLineChart } from '@/components/TrendLineChart'
 import { listAccounts, sumBalances } from '@/services/accountService'
 import {
   currentYearMonth,
-  getLatestSnapshotInMonth,
+  findMonthPoint,
   listMonthlyLastSnapshots,
+  monthDateRange,
   shiftMonth,
+  snapshotFromMonthPoint,
   type AssetDistributionItem,
   type AssetSnapshot,
   type MonthAssetPoint,
 } from '@/services/cloudAssetSnapshotService'
-import { recordTodayAssetSnapshotSafe } from '@/services/assetSnapshotService'
 import { listTransactions } from '@/services/transactionService'
 import type { Account, Transaction } from '@/types'
 import { formatMoney, formatDate, todayIsoDate } from '@/utils/format'
 
 const RECENT_TX_LIMIT = 8
 const TREND_DAYS = 14
+/** 月份选择器跨度；与折线图展示月数可不同 */
+const MONTH_OPTIONS_COUNT = 18
+const CHART_MONTHS = 12
 
 /** 近 N 天的起始日期（含今天，本地时区 YYYY-MM-DD） */
 function startDateDaysAgo(days: number): string {
@@ -48,12 +52,23 @@ interface DashboardPageProps {
 }
 
 /** 生成可选月份列表（含当前月，向前共 months 个月） */
-function buildMonthOptions(endMonth: string, months = 18): string[] {
+function buildMonthOptions(endMonth: string, months = MONTH_OPTIONS_COUNT): string[] {
   const list: string[] = []
   for (let i = months - 1; i >= 0; i -= 1) {
     list.push(shiftMonth(endMonth, -i))
   }
   return list
+}
+
+/** 按自然月拆分流水（date 为 YYYY-MM-DD） */
+function filterTxByMonth(txs: Transaction[], yearMonth: string): Transaction[] {
+  return txs.filter((t) => t.date.startsWith(yearMonth))
+}
+
+/** 折线图只用最近 CHART_MONTHS 个月 */
+function toChartPoints(points: MonthAssetPoint[]): MonthAssetPoint[] {
+  if (points.length <= CHART_MONTHS) return points
+  return points.slice(points.length - CHART_MONTHS)
 }
 
 /** 汇总已按月份云端过滤后的流水收支 */
@@ -72,6 +87,25 @@ function formatMonthLabel(yearMonth: string): string {
   return `${y}年${Number(m)}月`
 }
 
+/** 同一 refreshKey 下缓存账户/近况/月度快照，切换月份时不再重复请求 */
+interface DashboardBaseCache {
+  refreshKey: number
+  accounts: Account[]
+  recent: Transaction[]
+  trendTx: Transaction[]
+  allPoints: MonthAssetPoint[]
+  /** 看本月时合并拉回的流水，可直接派生双月统计 */
+  seedMonthTxs?: Transaction[]
+  seedMonth?: string
+  seedCompareMonth?: string
+}
+
+/**
+ * 模块级进行中请求：React Strict Mode 会卸载再挂载（useRef 会丢），
+ * 用模块变量才能合并两次 mount 的首屏请求。
+ */
+const dashboardBaseInflight = new Map<number, Promise<DashboardBaseCache>>()
+
 export function DashboardPage({ refreshKey = 0 }: DashboardPageProps) {
   const thisMonth = currentYearMonth()
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -83,50 +117,123 @@ export function DashboardPage({ refreshKey = 0 }: DashboardPageProps) {
   const [monthPoints, setMonthPoints] = useState<MonthAssetPoint[]>([])
   const [selectedSnap, setSelectedSnap] = useState<AssetSnapshot | null>(null)
   const [compareSnap, setCompareSnap] = useState<AssetSnapshot | null>(null)
+  /** 仅在当前挂载生命周期内复用；切走 Tab 卸载后下次会重新拉取 */
+  const baseCacheRef = useRef<DashboardBaseCache | null>(null)
 
-  const monthOptions = useMemo(() => buildMonthOptions(thisMonth, 18), [thisMonth])
+  const monthOptions = useMemo(
+    () => buildMonthOptions(thisMonth, MONTH_OPTIONS_COUNT),
+    [thisMonth],
+  )
   const compareMonth = shiftMonth(selectedMonth, -1)
   const isCurrentMonth = selectedMonth === thisMonth
 
   useEffect(() => {
+    let cancelled = false
+
     void (async () => {
-      const [accs, recentTx, trend] = await Promise.all([
-        listAccounts(),
-        listTransactions({ limit: RECENT_TX_LIMIT }),
-        listTransactions({
-          startDate: startDateDaysAgo(TREND_DAYS),
-          endDate: todayIsoDate(),
-        }),
-      ])
-      setAccounts(accs)
-      setRecent(recentTx)
-      setTrendTx(trend)
+      const { start: rangeStart } = monthDateRange(compareMonth)
+      const { end: rangeEnd } = monthDateRange(selectedMonth)
+      const trendStart = startDateDaysAgo(TREND_DAYS)
+      const today = todayIsoDate()
 
-      await recordTodayAssetSnapshotSafe()
-
-      try {
-        setMonthPoints(await listMonthlyLastSnapshots(12))
-      } catch {
-        setMonthPoints([])
+      const applySnaps = (points: MonthAssetPoint[]) => {
+        setSelectedSnap(
+          snapshotFromMonthPoint(findMonthPoint(points, selectedMonth)),
+        )
+        setCompareSnap(
+          snapshotFromMonthPoint(findMonthPoint(points, compareMonth)),
+        )
       }
-    })()
-  }, [refreshKey])
 
-  // 切换月份：云端按月拉流水 + 该月 / 对比月快照
-  useEffect(() => {
-    void (async () => {
-      const [txs, prevTxs, snap, prev] = await Promise.all([
-        listTransactions({ yearMonth: selectedMonth }),
-        listTransactions({ yearMonth: compareMonth }),
-        getLatestSnapshotInMonth(selectedMonth).catch(() => null),
-        getLatestSnapshotInMonth(compareMonth).catch(() => null),
-      ])
-      setMonthTx(txs)
-      setCompareTx(prevTxs)
-      setSelectedSnap(snap)
-      setCompareSnap(prev)
+      const applyBase = (base: DashboardBaseCache) => {
+        setAccounts(base.accounts)
+        setRecent(base.recent)
+        setTrendTx(base.trendTx)
+        setMonthPoints(toChartPoints(base.allPoints))
+        applySnaps(base.allPoints)
+      }
+
+      let base =
+        baseCacheRef.current?.refreshKey === refreshKey
+          ? baseCacheRef.current
+          : null
+
+      // 首屏 / 数据刷新：合并为 accounts + 流水 + 月度快照（看本月时流水只需 1 次）
+      if (!base) {
+        const viewingCurrent = selectedMonth === thisMonth
+        const mergedTxStart =
+          rangeStart < trendStart ? rangeStart : trendStart
+
+        let promise = dashboardBaseInflight.get(refreshKey)
+        if (!promise) {
+          promise = (async (): Promise<DashboardBaseCache> => {
+            const [accs, points, primaryTxs] = await Promise.all([
+              listAccounts(),
+              listMonthlyLastSnapshots(MONTH_OPTIONS_COUNT).catch(
+                () => [] as MonthAssetPoint[],
+              ),
+              listTransactions({
+                startDate: viewingCurrent ? mergedTxStart : trendStart,
+                endDate: today,
+              }),
+            ])
+            const recentTx = primaryTxs.slice(0, RECENT_TX_LIMIT)
+            const trend = primaryTxs.filter((t) => t.date >= trendStart)
+            return {
+              refreshKey,
+              accounts: accs,
+              recent: recentTx,
+              trendTx: trend,
+              allPoints: points,
+              // 看本月时把月度流水也带上，避免再打一枪
+              ...(viewingCurrent
+                ? {
+                    seedMonthTxs: primaryTxs,
+                    seedMonth: selectedMonth,
+                    seedCompareMonth: compareMonth,
+                  }
+                : {}),
+            }
+          })()
+          dashboardBaseInflight.set(refreshKey, promise)
+          void promise.finally(() => {
+            if (dashboardBaseInflight.get(refreshKey) === promise) {
+              dashboardBaseInflight.delete(refreshKey)
+            }
+          })
+        }
+
+        base = await promise
+        baseCacheRef.current = base
+        if (cancelled) return
+      }
+
+      applyBase(base)
+
+      // 本月首屏：流水已在合并请求里，直接派生双月数据
+      if (
+        base.seedMonthTxs &&
+        base.seedMonth === selectedMonth &&
+        base.seedCompareMonth === compareMonth
+      ) {
+        setMonthTx(filterTxByMonth(base.seedMonthTxs, selectedMonth))
+        setCompareTx(filterTxByMonth(base.seedMonthTxs, compareMonth))
+        return
+      }
+
+      const monthRangeTxs = await listTransactions({
+        startDate: rangeStart,
+        endDate: rangeEnd,
+      })
+      if (cancelled) return
+      setMonthTx(filterTxByMonth(monthRangeTxs, selectedMonth))
+      setCompareTx(filterTxByMonth(monthRangeTxs, compareMonth))
     })()
-  }, [selectedMonth, compareMonth, refreshKey])
+
+    return () => {
+      cancelled = true
+    }
+  }, [refreshKey, selectedMonth, compareMonth, thisMonth])
 
   const monthStats = useMemo(() => sumMonthStats(monthTx), [monthTx])
   const compareStats = useMemo(() => sumMonthStats(compareTx), [compareTx])

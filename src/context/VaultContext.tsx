@@ -31,8 +31,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const activateWithLoginPassword = useCallback(async (password: string) => {
     await migrateAccountsToCloud(password)
-    await seedDefaultAccountsIfEmpty()
-    await recordTodayAssetSnapshotSafe()
+    // seed 已返回账户列表，直接写入快照，避免再打一次 accounts
+    const accounts = await seedDefaultAccountsIfEmpty()
+    await recordTodayAssetSnapshotSafe(accounts)
     passwordRef.current = password
     sessionStorage.setItem(SESSION_UNLOCKED_KEY, '1')
     setUnlocked(true)

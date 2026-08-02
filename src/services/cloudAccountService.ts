@@ -2,6 +2,7 @@
  * Supabase public.accounts 明文账户（即时读写）。
  */
 import { requireSessionUserId } from '@/lib/authSession'
+import { dedupeAsync } from '@/lib/dedupeAsync'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import type { Account, AccountType } from '@/types'
 
@@ -58,18 +59,20 @@ function fromRow(row: CloudAccountRow): Account {
 }
 
 export async function listCloudAccounts(): Promise<Account[]> {
-  const client = requireClient()
   const userId = requireSessionUserId()
-  const { data, error } = await client
-    .from('accounts')
-    .select('*')
-    .eq('user_id', userId)
-    .order('sort_order', { ascending: true })
+  return dedupeAsync(`accounts:list:${userId}`, async () => {
+    const client = requireClient()
+    const { data, error } = await client
+      .from('accounts')
+      .select('*')
+      .eq('user_id', userId)
+      .order('sort_order', { ascending: true })
 
-  if (error) {
-    throw new Error(`拉取云端账户失败: ${error.message}`)
-  }
-  return ((data as CloudAccountRow[]) ?? []).map(fromRow)
+    if (error) {
+      throw new Error(`拉取云端账户失败: ${error.message}`)
+    }
+    return ((data as CloudAccountRow[]) ?? []).map(fromRow)
+  })
 }
 
 export async function getCloudAccount(id: string): Promise<Account | null> {

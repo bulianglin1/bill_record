@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent } from 'react'
+import { useState, type ChangeEvent } from 'react'
 import {
   FileUp,
   LogOut,
@@ -38,16 +38,17 @@ export function SettingsPage() {
     return hit?.id ?? accs[0]?.id ?? ''
   }
 
-  async function refresh() {
+  /**
+   * 账户列表仅服务账单导入下拉框：进入设置页不预拉，
+   * 首次展开/导入时再请求，避免无意义的 accounts 请求。
+   */
+  async function ensureAccounts(): Promise<Account[]> {
+    if (accounts.length > 0) return accounts
     const accs = await listAccounts()
     setAccounts(accs)
     setImportAccountId((prev) => pickDefaultImportAccount(accs, importSource, prev))
+    return accs
   }
-
-  useEffect(() => {
-    void refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   async function handleLogout() {
     setBusy(true)
@@ -69,8 +70,14 @@ export function SettingsPage() {
     setBusy(true)
     setMessage('')
     try {
-      if (!importAccountId) {
+      const accs = await ensureAccounts()
+      const accountId =
+        importAccountId || pickDefaultImportAccount(accs, importSource, '')
+      if (!accountId) {
         throw new Error('请先选择导入目标账户')
+      }
+      if (accountId !== importAccountId) {
+        setImportAccountId(accountId)
       }
       const importer = getImporter(importSource)
       const payload = await readBillFile(file)
@@ -79,9 +86,9 @@ export function SettingsPage() {
         if (!importer.parseTable) {
           throw new Error(`${importer.label}暂不支持 Excel，请导出 CSV 后再试`)
         }
-        result = await importer.parseTable(payload.rows, importAccountId)
+        result = await importer.parseTable(payload.rows, accountId)
       } else {
-        result = await importer.parse(payload.text, importAccountId)
+        result = await importer.parse(payload.text, accountId)
       }
       if (!result.success && result.transactions.length === 0) {
         throw new Error(result.errors[0] ?? '解析失败')
@@ -96,7 +103,6 @@ export function SettingsPage() {
         `导入完成：成功 ${count} 笔，跳过 ${result.skipped} 笔` +
           (result.errors.length ? `；警告 ${result.errors.length} 条` : ''),
       )
-      await refresh()
     } catch (err) {
       setMessage(err instanceof Error ? err.message : '导入失败')
     } finally {
@@ -169,6 +175,7 @@ export function SettingsPage() {
         <div className="grid gap-2 sm:grid-cols-2">
           <select
             value={importSource}
+            onFocus={() => void ensureAccounts()}
             onChange={(e) => {
               const source = e.target.value as 'wechat' | 'alipay'
               setImportSource(source)
@@ -181,14 +188,19 @@ export function SettingsPage() {
           </select>
           <select
             value={importAccountId}
+            onFocus={() => void ensureAccounts()}
             onChange={(e) => setImportAccountId(e.target.value)}
             className="min-h-11 rounded-xl border border-[var(--color-line)] bg-transparent px-3 py-2 text-sm"
           >
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
+            {accounts.length === 0 ? (
+              <option value="">点击加载账户…</option>
+            ) : (
+              accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))
+            )}
           </select>
         </div>
         <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-[var(--color-line)] px-4 py-2 text-sm">

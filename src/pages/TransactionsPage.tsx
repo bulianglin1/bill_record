@@ -39,10 +39,36 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
     note: '',
   })
 
+  useEffect(() => {
+    let cancelled = false
+
+    void (async () => {
+      const [accs, txs] = await Promise.all([
+        listAccounts(),
+        // 月份 / 账户条件在云端过滤；相同条件进行中请求会在服务层去重
+        listTransactions({
+          accountId: filterAccountId || undefined,
+          yearMonth: filterMonth || undefined,
+        }),
+      ])
+      if (cancelled) return
+      setAccounts(accs)
+      setTransactions(txs)
+      if (accs[0]) {
+        setForm((prev) =>
+          prev.accountId ? prev : { ...prev, accountId: accs[0]!.id },
+        )
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [filterAccountId, filterMonth, refreshKey])
+
   async function refresh() {
     const [accs, txs] = await Promise.all([
       listAccounts(),
-      // 月份 / 账户条件在云端过滤
       listTransactions({
         accountId: filterAccountId || undefined,
         yearMonth: filterMonth || undefined,
@@ -54,11 +80,6 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
       setForm((prev) => ({ ...prev, accountId: accs[0]!.id }))
     }
   }
-
-  useEffect(() => {
-    void refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterAccountId, filterMonth, refreshKey])
 
   const categories = useMemo(() => {
     if (form.type === 'income') return INCOME_CATEGORIES
