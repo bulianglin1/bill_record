@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ThemeProvider } from '@/context/ThemeContext'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
+import { ConfirmProvider } from '@/context/ConfirmContext'
 import { VaultProvider, useVault } from '@/context/VaultContext'
 import { Layout, type AppTab } from '@/components/Layout'
 import { QuickAddDialog } from '@/components/QuickAddDialog'
@@ -109,7 +110,9 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <VaultProvider>
-          <AppShell />
+          <ConfirmProvider>
+            <AppShell />
+          </ConfirmProvider>
         </VaultProvider>
       </AuthProvider>
     </ThemeProvider>

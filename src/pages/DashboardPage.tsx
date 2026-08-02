@@ -13,6 +13,7 @@ import {
 import { AccountCard } from '@/components/AccountCard'
 import { AssetMonthChart } from '@/components/AssetMonthChart'
 import { AssetPieChart } from '@/components/AssetPieChart'
+import { MonthPicker } from '@/components/MonthPicker'
 import { TrendLineChart } from '@/components/TrendLineChart'
 import { listAccounts, sumBalances } from '@/services/accountService'
 import {
@@ -285,16 +286,14 @@ export function DashboardPage({ refreshKey = 0 }: DashboardPageProps) {
             >
               <ChevronLeft size={18} />
             </button>
-            <input
-              type="month"
+            <MonthPicker
               value={selectedMonth}
-              max={thisMonth}
               min={monthOptions[0]}
-              onChange={(e) => {
-                const v = e.target.value
-                if (v && v <= thisMonth) setSelectedMonth(v)
+              max={thisMonth}
+              onChange={(v) => {
+                if (v) setSelectedMonth(v)
               }}
-              className="rounded-xl border border-[var(--color-line)] bg-transparent px-3 py-2 text-sm font-medium"
+              aria-label="查看月份"
             />
             <button
               type="button"

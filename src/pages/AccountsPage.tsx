@@ -10,6 +10,7 @@ import {
 import type { Account, AccountType } from '@/types'
 import { formatMoney } from '@/utils/format'
 import { AccountCard } from '@/components/AccountCard'
+import { useConfirm } from '@/context/ConfirmContext'
 
 const COLORS = ['#0d9488', '#7C3AED', '#0EA5E9', '#DC2626', '#EF4444', '#1677FF', '#07C160', '#F59E0B']
 
@@ -18,6 +19,7 @@ interface AccountsPageProps {
 }
 
 export function AccountsPage({ refreshKey = 0 }: AccountsPageProps) {
+  const confirm = useConfirm()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [editing, setEditing] = useState<Account | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -84,7 +86,13 @@ export function AccountsPage({ refreshKey = 0 }: AccountsPageProps) {
 
   async function handleDelete() {
     if (!editing) return
-    if (!confirm(`确认删除账户「${editing.name}」？`)) return
+    const ok = await confirm({
+      title: '删除账户',
+      message: `确认删除账户「${editing.name}」？此操作不可撤销。`,
+      confirmText: '删除',
+      danger: true,
+    })
+    if (!ok) return
     try {
       await deleteAccount(editing.id)
       setShowForm(false)

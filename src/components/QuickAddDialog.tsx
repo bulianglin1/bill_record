@@ -137,7 +137,7 @@ export function QuickAddDialog({ open, onClose, onSaved }: QuickAddDialogProps) 
                 autoFocus
                 value={form.amount}
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                className="min-h-12 w-full rounded-2xl border border-[var(--color-line)] bg-transparent px-4 text-lg outline-none ring-[var(--color-accent)] focus:ring-2"
+                className="field-input text-lg"
                 placeholder="0.00"
               />
             </label>
@@ -148,7 +148,7 @@ export function QuickAddDialog({ open, onClose, onSaved }: QuickAddDialogProps) 
                 required
                 value={form.accountId}
                 onChange={(e) => setForm({ ...form, accountId: e.target.value })}
-                className="min-h-12 w-full rounded-2xl border border-[var(--color-line)] bg-transparent px-3 outline-none ring-[var(--color-accent)] focus:ring-2"
+                className="field-input"
               >
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -163,7 +163,7 @@ export function QuickAddDialog({ open, onClose, onSaved }: QuickAddDialogProps) 
               <select
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="min-h-12 w-full rounded-2xl border border-[var(--color-line)] bg-transparent px-3 outline-none ring-[var(--color-accent)] focus:ring-2"
+                className="field-input"
               >
                 {categories.map((c) => (
                   <option key={c} value={c}>
@@ -178,8 +178,8 @@ export function QuickAddDialog({ open, onClose, onSaved }: QuickAddDialogProps) 
               <input
                 value={form.note}
                 onChange={(e) => setForm({ ...form, note: e.target.value })}
-                className="min-h-12 w-full rounded-2xl border border-[var(--color-line)] bg-transparent px-3 outline-none ring-[var(--color-accent)] focus:ring-2"
-                placeholder="可选"
+                className="field-input"
+                placeholder="可选备注"
               />
             </label>
 

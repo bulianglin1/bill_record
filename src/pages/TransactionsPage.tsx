@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import {
   ArrowDownUp,
-  CalendarRange,
   ChevronLeft,
   ChevronRight,
   Plus,
   RefreshCw,
   Trash2,
 } from 'lucide-react'
+import { DatePicker } from '@/components/DatePicker'
+import { MonthPicker } from '@/components/MonthPicker'
+import { useConfirm } from '@/context/ConfirmContext'
 import {
   EXPENSE_CATEGORIES,
   INCOME_CATEGORIES,
@@ -50,6 +52,7 @@ const EMPTY_SUMMARY: CloudTransactionSummary = {
 }
 
 export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
+  const confirm = useConfirm()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [summary, setSummary] = useState<CloudTransactionSummary>(EMPTY_SUMMARY)
@@ -251,7 +254,13 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('确认删除该笔流水？余额将回滚。')) return
+    const ok = await confirm({
+      title: '删除流水',
+      message: '确认删除该笔流水？账户余额将回滚。',
+      confirmText: '删除',
+      danger: true,
+    })
+    if (!ok) return
     await deleteTransaction(id)
     await refresh()
   }
@@ -295,7 +304,7 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
             setPage(1)
             setFilterAccountId(e.target.value)
           }}
-          className="panel rounded-xl px-3 py-2 text-sm"
+          className="select-field"
         >
           <option value="">全部账户</option>
           {accounts.map((a) => (
@@ -304,21 +313,17 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
             </option>
           ))}
         </select>
-        <label className="panel inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm">
-          <CalendarRange size={14} className="text-muted" />
-          <span className="text-muted">月份</span>
-          <input
-            type="month"
-            value={filterMonth}
-            max={todayIsoDate().slice(0, 7)}
-            onChange={(e) => {
-              setPage(1)
-              setFilterMonth(e.target.value)
-            }}
-            className="bg-transparent outline-none"
-            aria-label="按月份筛选"
-          />
-        </label>
+        <MonthPicker
+          value={filterMonth}
+          max={todayIsoDate().slice(0, 7)}
+          allowClear
+          placeholder="全部月份"
+          aria-label="按月份筛选"
+          onChange={(v) => {
+            setPage(1)
+            setFilterMonth(v)
+          }}
+        />
         <button
           type="button"
           onClick={applyThisMonth}
@@ -333,7 +338,7 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
         >
           全部日期
         </button>
-        <label className="panel inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm">
+        <label className="inline-flex items-center gap-2">
           <ArrowDownUp size={14} className="text-muted" />
           <select
             value={sortKey}
@@ -341,7 +346,7 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
               setPage(1)
               setSortKey(e.target.value as TransactionSortKey)
             }}
-            className="bg-transparent outline-none"
+            className="select-field"
             aria-label="排序"
           >
             <option value="date_desc">日期从新到旧</option>
@@ -428,12 +433,11 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
         <form onSubmit={handleSubmit} className="panel space-y-3 rounded-3xl p-5">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="日期">
-              <input
-                type="date"
-                required
+              <DatePicker
                 value={form.date}
-                onChange={(e) => setForm({ ...form, date: e.target.value })}
-                className="field-input"
+                max={todayIsoDate()}
+                onChange={(date) => setForm({ ...form, date })}
+                aria-label="记账日期"
               />
             </Field>
             <Field label="金额">
@@ -522,7 +526,7 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
                 value={form.note}
                 onChange={(e) => setForm({ ...form, note: e.target.value })}
                 className="field-input"
-                placeholder="可选"
+                placeholder="可选备注"
               />
             </Field>
           </div>
@@ -658,19 +662,6 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
         </div>
       )}
 
-      <style>{`
-        .field-input {
-          width: 100%;
-          border-radius: 0.75rem;
-          border: 1px solid var(--color-line);
-          background: transparent;
-          padding: 0.625rem 0.75rem;
-          outline: none;
-        }
-        .field-input:focus {
-          box-shadow: 0 0 0 2px var(--color-accent);
-        }
-      `}</style>
     </div>
   )
 }

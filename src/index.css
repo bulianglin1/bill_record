@@ -96,6 +96,44 @@
     min-width: 2.75rem;
   }
 
+  /** 通用表单控件 */
+  .field-input {
+    width: 100%;
+    min-height: 3rem;
+    border-radius: 1rem;
+    border: 1px solid var(--color-line);
+    background: color-mix(in oklab, var(--color-surface) 65%, var(--color-surface-elevated));
+    padding: 0.625rem 0.75rem;
+    outline: none;
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      background-color 160ms ease;
+  }
+
+  .field-input:focus {
+    border-color: color-mix(in oklab, var(--color-accent) 55%, var(--color-line));
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 22%, transparent);
+  }
+
+  .select-field {
+    min-height: 2.5rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-line);
+    background: color-mix(in oklab, var(--color-surface-elevated) 92%, transparent);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    outline: none;
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .select-field:focus {
+    border-color: color-mix(in oklab, var(--color-accent) 55%, var(--color-line));
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 22%, transparent);
+  }
+
   /** 登录页输入 */
   .auth-field {
     min-height: 3rem;
