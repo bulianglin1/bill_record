@@ -9,7 +9,6 @@ import {
   createTransaction,
   deleteTransaction,
   listTransactions,
-  refreshTransactionsFromCloud,
 } from '@/services/transactionService'
 import type { Account, Transaction, TransactionType } from '@/types'
 import { formatMoney, formatDate, todayIsoDate } from '@/utils/format'
@@ -41,15 +40,12 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
   })
 
   async function refresh() {
-    try {
-      await refreshTransactionsFromCloud()
-    } catch {
-      // 展示本地缓存；写入仍要求联网
-    }
     const [accs, txs] = await Promise.all([
       listAccounts(),
+      // 月份 / 账户条件在云端过滤
       listTransactions({
         accountId: filterAccountId || undefined,
+        yearMonth: filterMonth || undefined,
       }),
     ])
     setAccounts(accs)
@@ -62,7 +58,7 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
   useEffect(() => {
     void refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterAccountId, refreshKey])
+  }, [filterAccountId, filterMonth, refreshKey])
 
   const categories = useMemo(() => {
     if (form.type === 'income') return INCOME_CATEGORIES
@@ -107,18 +103,13 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
     [accounts],
   )
 
-  const filteredTransactions = useMemo(() => {
-    if (!filterMonth) return transactions
-    return transactions.filter((t) => t.date.startsWith(filterMonth))
-  }, [transactions, filterMonth])
-
   const summary = useMemo(() => {
     let income = 0
     let expense = 0
     let incomeCount = 0
     let expenseCount = 0
     let transferCount = 0
-    for (const t of filteredTransactions) {
+    for (const t of transactions) {
       if (t.type === 'income') {
         income += t.amount
         incomeCount += 1
@@ -130,7 +121,7 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
       }
     }
     return {
-      total: filteredTransactions.length,
+      total: transactions.length,
       income,
       expense,
       incomeCount,
@@ -138,10 +129,10 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
       transferCount,
       net: Math.round((income - expense) * 100) / 100,
     }
-  }, [filteredTransactions])
+  }, [transactions])
 
   const sortedTransactions = useMemo(() => {
-    const rows = [...filteredTransactions]
+    const rows = [...transactions]
     rows.sort((a, b) => {
       if (sortKey === 'date_asc') {
         if (a.date === b.date) return a.createdAt.localeCompare(b.createdAt)
@@ -160,7 +151,7 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
       return b.date.localeCompare(a.date)
     })
     return rows
-  }, [filteredTransactions, sortKey])
+  }, [transactions, sortKey])
 
   function applyThisMonth() {
     setFilterMonth(todayIsoDate().slice(0, 7))

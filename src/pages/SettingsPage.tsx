@@ -1,30 +1,24 @@
-import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react'
+import { useEffect, useState, type ChangeEvent } from 'react'
 import {
-  CloudUpload,
-  CloudDownload,
-  RefreshCw,
   FileUp,
   LogOut,
   HardDrive,
   BookMarked,
   UserRound,
+  Cloud,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useVault } from '@/context/VaultContext'
-import { ensureMeta } from '@/lib/db'
 import { isSupabaseConfigured } from '@/lib/supabase'
-import { autoSync, pullFromCloud, pushToCloud } from '@/lib/sync'
 import { listAccounts } from '@/services/accountService'
 import { bulkImportTransactions } from '@/services/transactionService'
 import { getImporter } from '@/utils/import'
 import { readBillFile } from '@/utils/import/readBillFile'
-import type { Account, AppMeta } from '@/types'
-import { formatDateTime } from '@/utils/format'
+import type { Account } from '@/types'
 
 export function SettingsPage() {
   const { user, signOut } = useAuth()
-  const { getPassword, lock } = useVault()
-  const [meta, setMeta] = useState<AppMeta | null>(null)
+  const { lock } = useVault()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -45,7 +39,6 @@ export function SettingsPage() {
   }
 
   async function refresh() {
-    setMeta(await ensureMeta())
     const accs = await listAccounts()
     setAccounts(accs)
     setImportAccountId((prev) => pickDefaultImportAccount(accs, importSource, prev))
@@ -55,34 +48,6 @@ export function SettingsPage() {
     void refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  function requireLoginPassword(): string {
-    const pwd = getPassword()
-    if (!pwd) {
-      throw new Error('会话已失效，请重新登录')
-    }
-    return pwd
-  }
-
-  async function runSync(action: 'push' | 'pull' | 'auto') {
-    setBusy(true)
-    setMessage('')
-    try {
-      const loginPassword = requireLoginPassword()
-      const result =
-        action === 'push'
-          ? await pushToCloud(loginPassword)
-          : action === 'pull'
-            ? await pullFromCloud(loginPassword)
-            : await autoSync(loginPassword)
-      setMessage(result.message)
-      await refresh()
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : '同步失败')
-    } finally {
-      setBusy(false)
-    }
-  }
 
   async function handleLogout() {
     setBusy(true)
@@ -143,9 +108,9 @@ export function SettingsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="font-display text-2xl font-semibold">设置与同步</h1>
+        <h1 className="font-display text-2xl font-semibold">设置</h1>
         <p className="mt-1 text-sm text-muted">
-          本地 IndexedDB 优先；云端仅存储 AES 密文
+          账户、流水、资产快照均保存在云端，换设备登录即可继续使用
         </p>
       </div>
 
@@ -172,58 +137,27 @@ export function SettingsPage() {
       </section>
 
       <section className="panel space-y-3 rounded-3xl p-5">
-        <h2 className="font-display text-lg font-semibold">同步状态</h2>
-        <dl className="grid gap-2 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-muted">本地版本</dt>
-            <dd className="font-medium">{meta?.localVersion ?? 0}</dd>
-          </div>
-          <div>
-            <dt className="text-muted">云端版本</dt>
-            <dd className="font-medium">{meta?.remoteVersion ?? 0}</dd>
-          </div>
-          <div className="sm:col-span-2">
-            <dt className="text-muted">上次同步</dt>
-            <dd className="font-medium">
-              {meta?.lastSyncedAt
-                ? formatDateTime(meta.lastSyncedAt)
-                : '尚未同步'}
-            </dd>
-          </div>
-        </dl>
-      </section>
-
-      <section className="panel space-y-4 rounded-3xl p-5">
-        <h2 className="font-display text-lg font-semibold">云同步（vaults）</h2>
-        <p className="text-sm text-muted">
-          账号在 <code>public.users</code>；加密快照按用户 id 写入 <code>public.vaults</code>。
-        </p>
+        <h2 className="font-display flex items-center gap-2 text-lg font-semibold">
+          <Cloud size={18} className="text-[var(--color-accent)]" />
+          云端数据
+        </h2>
         {!isSupabaseConfigured ? (
           <p className="text-sm text-muted">
             未检测到环境变量。复制 <code>.env.example</code> 为 <code>.env</code> 并填入
             Supabase URL / anon key 后重启开发服务器。
           </p>
         ) : (
-          <div className="flex flex-wrap gap-2">
-            <SyncButton
-              disabled={busy || !user}
-              onClick={() => void runSync('auto')}
-              icon={<RefreshCw size={14} />}
-              label="自动同步"
-            />
-            <SyncButton
-              disabled={busy || !user}
-              onClick={() => void runSync('push')}
-              icon={<CloudUpload size={14} />}
-              label="推送到云端"
-            />
-            <SyncButton
-              disabled={busy || !user}
-              onClick={() => void runSync('pull')}
-              icon={<CloudDownload size={14} />}
-              label="从云端拉取"
-            />
-          </div>
+          <ul className="space-y-1 text-sm text-muted">
+            <li>
+              账户 → <code>public.accounts</code>
+            </li>
+            <li>
+              流水 → <code>public.transactions</code>
+            </li>
+            <li>
+              资产快照 → <code>public.asset_snapshots</code>
+            </li>
+          </ul>
         )}
       </section>
 
@@ -238,7 +172,6 @@ export function SettingsPage() {
             onChange={(e) => {
               const source = e.target.value as 'wechat' | 'alipay'
               setImportSource(source)
-              // 切换来源时优先落到同名账户（微信 / 支付宝）
               setImportAccountId(pickDefaultImportAccount(accounts, source, ''))
             }}
             className="min-h-11 rounded-xl border border-[var(--color-line)] bg-transparent px-3 py-2 text-sm"
@@ -276,16 +209,14 @@ export function SettingsPage() {
       </section>
 
       <section className="panel space-y-3 rounded-3xl p-5">
-        <h2 className="font-display text-lg font-semibold">方案 B / C（扩展点）</h2>
+        <h2 className="font-display text-lg font-semibold">扩展备份（可选）</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-dashed border-[var(--color-line)] p-4 text-sm">
             <div className="mb-2 flex items-center gap-2 font-medium">
               <BookMarked size={16} />
               GitHub 私有仓库 JSON
             </div>
-            <p className="text-muted">
-              可将加密后的 vault JSON 通过 GitHub Contents API 写入私有仓库，作为冷备份。
-            </p>
+            <p className="text-muted">可将云端导出数据写入私有仓库，作为冷备份。</p>
           </div>
           <div className="rounded-2xl border border-dashed border-[var(--color-line)] p-4 text-sm">
             <div className="mb-2 flex items-center gap-2 font-medium">
@@ -293,7 +224,7 @@ export function SettingsPage() {
               WebDAV 网盘
             </div>
             <p className="text-muted">
-              支持挂载坚果云 / Nextcloud 等 WebDAV，上传加密快照文件。
+              支持挂载坚果云 / Nextcloud 等 WebDAV，上传备份文件。
             </p>
           </div>
         </div>
@@ -305,29 +236,5 @@ export function SettingsPage() {
         </p>
       )}
     </div>
-  )
-}
-
-function SyncButton({
-  disabled,
-  onClick,
-  icon,
-  label,
-}: {
-  disabled: boolean
-  onClick: () => void
-  icon: ReactNode
-  label: string
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--color-line)] px-3 py-2 text-sm disabled:opacity-50"
-    >
-      {icon}
-      {label}
-    </button>
   )
 }

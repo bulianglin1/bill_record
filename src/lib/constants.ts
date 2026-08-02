@@ -1,26 +1,20 @@
 import type { AccountType } from '@/types'
 
-/** 本地库 Schema 版本 */
-export const LOCAL_SCHEMA_VERSION = 1
-
-/** 保险库快照 Schema 版本（v2：流水改云端表，快照仅账户+汇总） */
-export const VAULT_SCHEMA_VERSION = 2
-
-/** PBKDF2 迭代次数（平衡安全性与浏览器性能） */
+/** PBKDF2 迭代次数（登录密码哈希 / 旧 vault 迁移解密） */
 export const PBKDF2_ITERATIONS = 310_000
 
-/** AES-GCM 密钥长度（bit） */
+/** AES-GCM 密钥长度（bit），用于旧 vault 迁移解密 */
 export const AES_KEY_LENGTH = 256
 
 /** AES-GCM IV 长度（byte） */
 export const AES_IV_LENGTH = 12
 
-/** 会话存储 Key：标记已解锁（不存密码明文） */
+/** 会话存储 Key：标记账本已就绪（不存密码明文） */
 export const SESSION_UNLOCKED_KEY = 'bill_record_unlocked'
 
 /**
  * 会话存储 Key：登录密码（仅 sessionStorage，同标签页刷新可续登；关标签即清）
- * 用于 vaults AES；勿改 localStorage，避免长期落盘明文密码。
+ * 勿改 localStorage，避免长期落盘明文密码。
  */
 export const SESSION_LOGIN_PASSWORD_KEY = 'bill_record_login_password'
 
@@ -65,6 +59,3 @@ export const INCOME_CATEGORIES = [
   '退款',
   '其他',
 ] as const
-
-/** Meta 表固定主键 */
-export const META_ID = 'app'

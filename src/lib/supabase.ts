@@ -1,6 +1,6 @@
 /**
  * Supabase 客户端。
- * 未配置环境变量时返回 null，应用可纯本地运行。
+ * 未配置环境变量时返回 null，应用无法读写业务数据。
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 

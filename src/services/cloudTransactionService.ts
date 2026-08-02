@@ -3,6 +3,7 @@
  */
 import { requireSessionUserId } from '@/lib/authSession'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
+import { monthDateRange } from '@/services/cloudAssetSnapshotService'
 import type { Transaction } from '@/types'
 
 interface CloudTransactionRow {
@@ -18,6 +19,20 @@ interface CloudTransactionRow {
   source: string | null
   created_at: string
   updated_at: string
+}
+
+/** 云端流水列表查询条件（均在数据库侧过滤） */
+export interface ListCloudTransactionsOptions {
+  /** YYYY-MM，按自然月过滤 date */
+  yearMonth?: string
+  /** 起始日期 YYYY-MM-DD（与 yearMonth 互斥，yearMonth 优先） */
+  startDate?: string
+  /** 结束日期 YYYY-MM-DD */
+  endDate?: string
+  /** 账户：匹配转出或转入 */
+  accountId?: string
+  /** 最多返回条数 */
+  limit?: number
 }
 
 function requireClient() {
@@ -84,15 +99,82 @@ export async function deleteCloudTransaction(id: string): Promise<void> {
   }
 }
 
-/** 拉取当前用户全部云端流水 */
-export async function listCloudTransactions(): Promise<Transaction[]> {
+/** 统计某账户相关流水条数（转出或转入） */
+export async function countCloudTransactionsByAccount(
+  accountId: string,
+): Promise<number> {
+  const client = requireClient()
+  const userId = requireSessionUserId()
+  const { count, error } = await client
+    .from('transactions')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`)
+
+  if (error) {
+    throw new Error(`统计账户流水失败: ${error.message}`)
+  }
+  return count ?? 0
+}
+
+/** 按 id 取单条云端流水 */
+export async function getCloudTransaction(id: string): Promise<Transaction | null> {
   const client = requireClient()
   const userId = requireSessionUserId()
   const { data, error } = await client
     .from('transactions')
     .select('*')
+    .eq('id', id)
     .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(`查询流水失败: ${error.message}`)
+  }
+  if (!data) return null
+  return fromRow(data as CloudTransactionRow)
+}
+
+/**
+ * 按条件拉取云端流水（user_id + 可选月份/日期/账户/条数）。
+ */
+export async function listCloudTransactions(
+  options?: ListCloudTransactionsOptions,
+): Promise<Transaction[]> {
+  const client = requireClient()
+  const userId = requireSessionUserId()
+
+  let query = client
+    .from('transactions')
+    .select('*')
+    .eq('user_id', userId)
+
+  if (options?.yearMonth) {
+    const { start, end } = monthDateRange(options.yearMonth)
+    query = query.gte('date', start).lte('date', end)
+  } else {
+    if (options?.startDate) {
+      query = query.gte('date', options.startDate)
+    }
+    if (options?.endDate) {
+      query = query.lte('date', options.endDate)
+    }
+  }
+
+  if (options?.accountId) {
+    const accountId = options.accountId
+    query = query.or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`)
+  }
+
+  query = query
     .order('date', { ascending: false })
+    .order('created_at', { ascending: false })
+
+  if (options?.limit !== undefined) {
+    query = query.limit(options.limit)
+  }
+
+  const { data, error } = await query
 
   if (error) {
     throw new Error(`拉取云端流水失败: ${error.message}`)

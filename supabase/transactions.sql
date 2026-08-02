@@ -38,5 +38,13 @@ create index if not exists transactions_user_id_date_idx
 create index if not exists transactions_user_id_idx
   on public.transactions (user_id);
 
+-- 按账户筛选（含转账目标）
+create index if not exists transactions_user_account_date_idx
+  on public.transactions (user_id, account_id, date desc);
+
+create index if not exists transactions_user_to_account_date_idx
+  on public.transactions (user_id, to_account_id, date desc)
+  where to_account_id is not null;
+
 alter table public.transactions disable row level security;
 grant select, insert, update, delete on public.transactions to anon, authenticated;

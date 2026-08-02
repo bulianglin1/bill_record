@@ -45,7 +45,7 @@ function AppShell() {
     setVaultError('')
     void activateWithLoginPassword(pwd)
       .catch((err) => {
-        setVaultError(err instanceof Error ? err.message : '保险库初始化失败')
+        setVaultError(err instanceof Error ? err.message : '账本初始化失败')
       })
       .finally(() => {
         setVaultBooting(false)
@@ -69,13 +69,15 @@ function AppShell() {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-4 text-sm">
         <p className="text-[var(--color-danger)]">{vaultError}</p>
-        <p className="text-muted">请刷新后重新登录，或检查网络与数据库表是否已创建。</p>
+        <p className="text-muted">
+          请刷新后重新登录，或检查网络与是否已执行 accounts / transactions 等 SQL。
+        </p>
       </div>
     )
   }
 
   if (!unlocked || vaultBooting) {
-    return <BootLoading text="正在准备账本…" />
+    return <BootLoading text="正在连接云端账本…" />
   }
 
   return (

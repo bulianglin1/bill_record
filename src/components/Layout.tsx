@@ -55,7 +55,7 @@ export function Layout({ tab, onTabChange, onQuickAdd, children }: LayoutProps) 
             Bill Record
           </p>
           <p className="mt-0.5 truncate text-xs text-muted sm:text-sm">
-            本地优先 · 加密同步 · 零服务器费用
+            云端账本 · 多端同步
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">

@@ -1,6 +1,5 @@
 /**
  * 自建账号认证（public.users）。
- * 登录密码同时用于 vaults AES 加密。
  * 用户信息落 localStorage；密码仅落 sessionStorage（刷新可续登，关标签清除）。
  */
 import {

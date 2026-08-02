@@ -1,7 +1,10 @@
 -- Bill Record 表结构（Supabase 免费版）
 -- 在 Supabase SQL Editor 中执行本文件即可完成初始化 / 升级
+-- 账户表请另行执行：supabase/accounts.sql
 -- 流水表请另行执行：supabase/transactions.sql
 -- 资产日快照请另行执行：supabase/asset_snapshots.sql
+-- 说明：业务数据以 accounts / transactions / asset_snapshots 明文表为准；
+-- vaults 表仅为历史兼容（登录时一次性迁移账户），新数据不再写入。
 
 create extension if not exists "pgcrypto";
 

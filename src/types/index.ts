@@ -44,39 +44,15 @@ export interface AuthUser {
   email: string
 }
 
-/** 应用元数据（同步状态等） */
-export interface AppMeta {
-  id: string
-  /** 本地数据版本，每次变更 +1 */
-  localVersion: number
-  /** 云端版本号（与 Supabase vaults.version 对齐） */
-  remoteVersion: number
-  lastSyncedAt?: string
-  /** PBKDF2 盐值（Base64），首次设置 Master Password 时生成 */
-  salt?: string
-}
-
-/** vaults 内汇总（总收入等）；流水不在密文包中 */
-export interface VaultSummary {
-  /** 累计收入 */
-  totalIncome: number
-  /** 累计支出 */
-  totalExpense: number
-  /** 总资产（账户余额合计） */
-  totalAssets: number
-}
-
-/** 导出/同步用保险库快照（加密前；不含流水明细） */
+/** 旧 vaults 密文快照（仅迁移用） */
 export interface VaultSnapshot {
   accounts: Account[]
-  summary: VaultSummary
-  exportedAt: string
-  schemaVersion: number
-  /** @deprecated v1 兼容，拉取时若存在则忽略并改从流水表加载 */
+  exportedAt?: string
+  schemaVersion?: number
   transactions?: Transaction[]
 }
 
-/** Supabase vaults 表行 */
+/** 旧 Supabase vaults 表行（仅迁移用） */
 export interface VaultRow {
   id: string
   user_id: string
@@ -88,7 +64,7 @@ export interface VaultRow {
   created_at: string
 }
 
-/** 加密后的载荷 */
+/** 加密后的载荷（登录哈希 / 旧 vault 迁移） */
 export interface EncryptedPayload {
   ciphertext: string
   iv: string

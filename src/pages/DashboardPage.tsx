@@ -25,12 +25,23 @@ import {
   type MonthAssetPoint,
 } from '@/services/cloudAssetSnapshotService'
 import { recordTodayAssetSnapshotSafe } from '@/services/assetSnapshotService'
-import {
-  listTransactions,
-  refreshTransactionsFromCloud,
-} from '@/services/transactionService'
+import { listTransactions } from '@/services/transactionService'
 import type { Account, Transaction } from '@/types'
-import { formatMoney, formatDate } from '@/utils/format'
+import { formatMoney, formatDate, todayIsoDate } from '@/utils/format'
+
+const RECENT_TX_LIMIT = 8
+const TREND_DAYS = 14
+
+/** 近 N 天的起始日期（含今天，本地时区 YYYY-MM-DD） */
+function startDateDaysAgo(days: number): string {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() - (days - 1))
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
 
 interface DashboardPageProps {
   refreshKey?: number
@@ -45,11 +56,11 @@ function buildMonthOptions(endMonth: string, months = 18): string[] {
   return list
 }
 
-function sumMonthStats(txs: Transaction[], yearMonth: string) {
+/** 汇总已按月份云端过滤后的流水收支 */
+function sumMonthStats(txs: Transaction[]) {
   let income = 0
   let expense = 0
   for (const t of txs) {
-    if (!t.date.startsWith(yearMonth)) continue
     if (t.type === 'income') income += t.amount
     if (t.type === 'expense') expense += t.amount
   }
@@ -65,7 +76,9 @@ export function DashboardPage({ refreshKey = 0 }: DashboardPageProps) {
   const thisMonth = currentYearMonth()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [recent, setRecent] = useState<Transaction[]>([])
-  const [allTx, setAllTx] = useState<Transaction[]>([])
+  const [trendTx, setTrendTx] = useState<Transaction[]>([])
+  const [monthTx, setMonthTx] = useState<Transaction[]>([])
+  const [compareTx, setCompareTx] = useState<Transaction[]>([])
   const [selectedMonth, setSelectedMonth] = useState(thisMonth)
   const [monthPoints, setMonthPoints] = useState<MonthAssetPoint[]>([])
   const [selectedSnap, setSelectedSnap] = useState<AssetSnapshot | null>(null)
@@ -77,16 +90,17 @@ export function DashboardPage({ refreshKey = 0 }: DashboardPageProps) {
 
   useEffect(() => {
     void (async () => {
-      try {
-        await refreshTransactionsFromCloud()
-      } catch {
-        // 列表仍可读本地缓存
-      }
-
-      const [accs, all] = await Promise.all([listAccounts(), listTransactions()])
+      const [accs, recentTx, trend] = await Promise.all([
+        listAccounts(),
+        listTransactions({ limit: RECENT_TX_LIMIT }),
+        listTransactions({
+          startDate: startDateDaysAgo(TREND_DAYS),
+          endDate: todayIsoDate(),
+        }),
+      ])
       setAccounts(accs)
-      setAllTx(all)
-      setRecent(all.slice(0, 8))
+      setRecent(recentTx)
+      setTrendTx(trend)
 
       await recordTodayAssetSnapshotSafe()
 
@@ -98,31 +112,24 @@ export function DashboardPage({ refreshKey = 0 }: DashboardPageProps) {
     })()
   }, [refreshKey])
 
-  // 切换月份时拉取该月 / 对比月快照
+  // 切换月份：云端按月拉流水 + 该月 / 对比月快照
   useEffect(() => {
     void (async () => {
-      try {
-        const [snap, prev] = await Promise.all([
-          getLatestSnapshotInMonth(selectedMonth),
-          getLatestSnapshotInMonth(compareMonth),
-        ])
-        setSelectedSnap(snap)
-        setCompareSnap(prev)
-      } catch {
-        setSelectedSnap(null)
-        setCompareSnap(null)
-      }
+      const [txs, prevTxs, snap, prev] = await Promise.all([
+        listTransactions({ yearMonth: selectedMonth }),
+        listTransactions({ yearMonth: compareMonth }),
+        getLatestSnapshotInMonth(selectedMonth).catch(() => null),
+        getLatestSnapshotInMonth(compareMonth).catch(() => null),
+      ])
+      setMonthTx(txs)
+      setCompareTx(prevTxs)
+      setSelectedSnap(snap)
+      setCompareSnap(prev)
     })()
   }, [selectedMonth, compareMonth, refreshKey])
 
-  const monthStats = useMemo(
-    () => sumMonthStats(allTx, selectedMonth),
-    [allTx, selectedMonth],
-  )
-  const compareStats = useMemo(
-    () => sumMonthStats(allTx, compareMonth),
-    [allTx, compareMonth],
-  )
+  const monthStats = useMemo(() => sumMonthStats(monthTx), [monthTx])
+  const compareStats = useMemo(() => sumMonthStats(compareTx), [compareTx])
 
   const total = sumBalances(accounts)
   /** 所选月展示用总资产：当月用实时余额，历史月用该月末快照 */
@@ -349,7 +356,7 @@ export function DashboardPage({ refreshKey = 0 }: DashboardPageProps) {
               <Activity size={18} className="text-[var(--color-accent)]" />
               <h2 className="font-display text-lg font-semibold">近 14 日收支</h2>
             </div>
-            <TrendLineChart transactions={allTx} days={14} />
+            <TrendLineChart transactions={trendTx} days={TREND_DAYS} />
           </div>
         )}
       </section>

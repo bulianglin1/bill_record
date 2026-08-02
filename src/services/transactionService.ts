@@ -1,18 +1,19 @@
 import {
-  bumpLocalVersion,
-  createId,
-  db,
-  nowIso,
-  replaceLocalTransactions,
-} from '@/lib/db'
-import { roundMoney } from '@/services/accountService'
+  applyAccountBalanceDelta,
+  roundMoney,
+} from '@/services/accountService'
 import { recordTodayAssetSnapshotSafe } from '@/services/assetSnapshotService'
 import {
   deleteCloudTransaction,
+  getCloudTransaction,
   insertCloudTransaction,
   listCloudTransactions,
+  type ListCloudTransactionsOptions,
 } from '@/services/cloudTransactionService'
+import { createId, nowIso } from '@/utils/id'
 import type { Transaction, TransactionType } from '@/types'
+
+export type ListTransactionsOptions = ListCloudTransactionsOptions
 
 export interface TransactionInput {
   date: string
@@ -25,42 +26,16 @@ export interface TransactionInput {
   source?: Transaction['source']
 }
 
-/** 从云端刷新本地流水缓存（需联网） */
-export async function refreshTransactionsFromCloud(): Promise<Transaction[]> {
-  const remote = await listCloudTransactions()
-  await replaceLocalTransactions(remote)
-  return remote
-}
-
-/** 按日期倒序列出流水（读本地缓存；调用方应先 refresh） */
-export async function listTransactions(options?: {
-  accountId?: string
-  limit?: number
-}): Promise<Transaction[]> {
-  let rows = await db.transactions.orderBy('date').reverse().toArray()
-
-  if (options?.accountId) {
-    rows = rows.filter(
-      (t) => t.accountId === options.accountId || t.toAccountId === options.accountId,
-    )
-  }
-
-  rows.sort((a, b) => {
-    if (a.date === b.date) {
-      return b.createdAt.localeCompare(a.createdAt)
-    }
-    return b.date.localeCompare(a.date)
-  })
-
-  if (options?.limit) {
-    return rows.slice(0, options.limit)
-  }
-  return rows
+/** 按条件列出流水（仅云端） */
+export async function listTransactions(
+  options?: ListTransactionsOptions,
+): Promise<Transaction[]> {
+  return listCloudTransactions(options)
 }
 
 /**
- * 新增流水：先写云端明文表，成功后再改本地余额与缓存。
- * 必须联网；云端失败则整笔失败。
+ * 新增流水：先写云端流水，再更新云端账户余额。
+ * 必须联网；任一步失败会尽力回滚。
  */
 export async function createTransaction(input: TransactionInput): Promise<Transaction> {
   const amount = roundMoney(Math.abs(input.amount))
@@ -89,17 +64,11 @@ export async function createTransaction(input: TransactionInput): Promise<Transa
     updatedAt: now,
   }
 
-  // 先云端，失败则不碰本地
   await insertCloudTransaction(tx)
 
   try {
-    await db.transaction('rw', db.transactions, db.accounts, db.meta, async () => {
-      await applyBalanceDelta(tx, 1)
-      await db.transactions.add(tx)
-      await bumpLocalVersion()
-    })
+    await applyBalanceDelta(tx, 1)
   } catch (err) {
-    // 尽力回滚云端，避免只剩远端脏数据
     try {
       await deleteCloudTransaction(tx.id)
     } catch {
@@ -113,25 +82,29 @@ export async function createTransaction(input: TransactionInput): Promise<Transa
 }
 
 export async function deleteTransaction(id: string): Promise<void> {
-  const existing = await db.transactions.get(id)
+  const existing = await getCloudTransaction(id)
   if (!existing) {
-    // 仍尝试删云端（本地缓存可能未刷新）
     await deleteCloudTransaction(id)
     return
   }
 
-  await deleteCloudTransaction(id)
-
-  await db.transaction('rw', db.transactions, db.accounts, db.meta, async () => {
-    await applyBalanceDelta(existing, -1)
-    await db.transactions.delete(id)
-    await bumpLocalVersion()
-  })
+  // 先回滚余额，再删流水；删失败则反向补回余额
+  await applyBalanceDelta(existing, -1)
+  try {
+    await deleteCloudTransaction(id)
+  } catch (err) {
+    try {
+      await applyBalanceDelta(existing, 1)
+    } catch {
+      // 忽略二次回滚失败
+    }
+    throw err
+  }
   await recordTodayAssetSnapshotSafe()
 }
 
 /**
- * 批量导入：逐条先云端后本地；中断则已成功的保留。
+ * 批量导入：逐条先云端后改余额；中断则已成功的保留。
  */
 export async function bulkImportTransactions(
   items: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>[],
@@ -161,26 +134,15 @@ async function applyBalanceDelta(tx: Transaction, direction: 1 | -1): Promise<vo
   const delta = roundMoney(tx.amount * direction)
 
   if (tx.type === 'expense') {
-    await adjustBalance(tx.accountId, -delta)
+    await applyAccountBalanceDelta(tx.accountId, -delta)
     return
   }
   if (tx.type === 'income') {
-    await adjustBalance(tx.accountId, delta)
+    await applyAccountBalanceDelta(tx.accountId, delta)
     return
   }
-  await adjustBalance(tx.accountId, -delta)
+  await applyAccountBalanceDelta(tx.accountId, -delta)
   if (tx.toAccountId) {
-    await adjustBalance(tx.toAccountId, delta)
+    await applyAccountBalanceDelta(tx.toAccountId, delta)
   }
-}
-
-async function adjustBalance(accountId: string, delta: number): Promise<void> {
-  const account = await db.accounts.get(accountId)
-  if (!account) {
-    throw new Error('账户不存在')
-  }
-  await db.accounts.update(accountId, {
-    balance: roundMoney(account.balance + delta),
-    updatedAt: nowIso(),
-  })
 }
