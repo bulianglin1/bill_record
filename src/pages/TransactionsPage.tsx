@@ -55,6 +55,9 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
   const [summary, setSummary] = useState<CloudTransactionSummary>(EMPTY_SUMMARY)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  /** 跳转页输入（与 page 同步展示） */
+  const [jumpPageInput, setJumpPageInput] = useState('1')
+  const [jumpError, setJumpError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [error, setError] = useState('')
   const [filterAccountId, setFilterAccountId] = useState('')
@@ -79,6 +82,22 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
   })
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  useEffect(() => {
+    setJumpPageInput(String(page))
+  }, [page, totalPages])
+
+  function handleJumpToPage() {
+    const raw = jumpPageInput.trim()
+    const n = Number(raw)
+    if (!Number.isInteger(n) || n < 1 || n > totalPages) {
+      setJumpError(`请输入 1–${totalPages} 之间的整数页码`)
+      setJumpPageInput(String(page))
+      return
+    }
+    setJumpError('')
+    setPage(n)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -578,30 +597,64 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
       </div>
 
       {total > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-sm">
-          <p className="text-muted">
-            共 {total} 笔 · 第 {page} / {totalPages} 页（每页 {PAGE_SIZE}）
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-[var(--color-line)] px-3 disabled:opacity-40"
-            >
-              <ChevronLeft size={16} />
-              上一页
-            </button>
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-[var(--color-line)] px-3 disabled:opacity-40"
-            >
-              下一页
-              <ChevronRight size={16} />
-            </button>
+        <div className="space-y-1 px-1 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-muted">
+              共 {total} 笔 · 第 {page} / {totalPages} 页（每页 {PAGE_SIZE}）
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-[var(--color-line)] px-3 disabled:opacity-40"
+              >
+                <ChevronLeft size={16} />
+                上一页
+              </button>
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-[var(--color-line)] px-3 disabled:opacity-40"
+              >
+                下一页
+                <ChevronRight size={16} />
+              </button>
+              <form
+                className="flex items-center gap-1.5"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleJumpToPage()
+                }}
+              >
+                <span className="text-muted">到</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  inputMode="numeric"
+                  value={jumpPageInput}
+                  onChange={(e) => {
+                    setJumpError('')
+                    setJumpPageInput(e.target.value)
+                  }}
+                  className="min-h-10 w-16 rounded-xl border border-[var(--color-line)] bg-transparent px-2 text-center outline-none"
+                  aria-label="跳转页码"
+                />
+                <span className="text-muted">页</span>
+                <button
+                  type="submit"
+                  className="inline-flex min-h-10 items-center rounded-xl border border-[var(--color-line)] px-3"
+                >
+                  跳转
+                </button>
+              </form>
+            </div>
           </div>
+          {jumpError && (
+            <p className="text-[var(--color-danger)]">{jumpError}</p>
+          )}
         </div>
       )}
 

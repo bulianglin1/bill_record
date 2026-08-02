@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { Mail, Lock, UserPlus, LogIn } from 'lucide-react'
+import { User, Lock, UserPlus, LogIn, Moon, Sun } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { useTheme } from '@/context/ThemeContext'
 import clsx from 'clsx'
@@ -48,43 +48,37 @@ export function AuthPage() {
 
   if (!configured) {
     return (
-      <div className="flex min-h-dvh items-center justify-center px-4 py-10">
-        <div className="panel w-full max-w-md rounded-3xl p-8">
-          <p className="font-display text-2xl font-semibold">未配置 Supabase</p>
-          <p className="mt-3 text-sm text-muted">
-            请复制 <code>.env.example</code> 为 <code>.env</code>，填入
-            <code> VITE_SUPABASE_URL </code>与
-            <code> VITE_SUPABASE_ANON_KEY </code>
-            后重启 <code>npm run dev</code>。并在 SQL Editor 执行
-            <code> supabase/schema.sql</code>。
+      <AuthShell theme={theme} onToggleTheme={toggleTheme}>
+        <div className="auth-enter-brand">
+          <p className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">
+            Bill Record
+          </p>
+          <p className="mt-3 text-sm leading-relaxed text-muted">
+            未检测到 Supabase 配置。请复制 <code>.env.example</code> 为{' '}
+            <code>.env</code>，填入 <code>VITE_SUPABASE_URL</code> 与{' '}
+            <code>VITE_SUPABASE_ANON_KEY</code> 后重启开发服务器，并在 SQL Editor
+            执行 <code>supabase/schema.sql</code>。
           </p>
         </div>
-      </div>
+      </AuthShell>
     )
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center px-4 py-10">
-      <div className="panel w-full max-w-md rounded-3xl p-6 shadow-sm sm:p-8">
-        <div className="mb-6 flex items-start justify-between gap-3">
-          <div>
-            <p className="font-display text-3xl font-semibold tracking-tight">Bill Record</p>
-            <p className="mt-2 text-sm text-muted">
-              {mode === 'login'
-                ? '登录后直接进入账本（登录密码同时用于数据加密）'
-                : '注册账号（登录密码同时用于数据加密）'}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="rounded-xl border border-[var(--color-line)] px-3 py-1.5 text-xs text-muted"
-          >
-            {theme === 'dark' ? '浅色' : '深色'}
-          </button>
-        </div>
+    <AuthShell theme={theme} onToggleTheme={toggleTheme}>
+      <div className="auth-enter-brand mb-8">
+        <p className="font-display text-4xl font-semibold tracking-tight sm:text-5xl">
+          Bill Record
+        </p>
+        <p className="mt-3 max-w-sm text-sm leading-relaxed text-muted">
+          {mode === 'login'
+            ? '登录后进入云端账本。登录密码同时用于本地数据加密。'
+            : '创建账号后即可记账同步。登录密码同时用于本地数据加密。'}
+        </p>
+      </div>
 
-        <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl border border-[var(--color-line)] p-1">
+      <div className="auth-enter-form space-y-5">
+        <div className="grid grid-cols-2 gap-1 rounded-2xl bg-[color-mix(in_oklab,var(--color-line)_55%,transparent)] p-1">
           <ModeTab
             active={mode === 'login'}
             onClick={() => {
@@ -109,33 +103,31 @@ export function AuthPage() {
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <label className="block">
-            <span className="mb-1.5 block text-sm text-muted">邮箱</span>
+            <span className="mb-1.5 block text-sm text-muted">账号</span>
             <div className="relative">
-              <Mail
+              <User
                 size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
               />
               <input
-                type="email"
+                type="text"
                 required
-                autoComplete="email"
+                autoComplete="username"
                 autoFocus
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="min-h-12 w-full rounded-2xl border border-[var(--color-line)] bg-transparent py-2.5 pl-10 pr-3 outline-none ring-[var(--color-accent)] focus:ring-2"
-                placeholder="you@example.com"
+                className="auth-field"
+                placeholder="账号名或邮箱"
               />
             </div>
           </label>
 
           <label className="block">
-              <span className="mb-1.5 block text-sm text-muted">
-                登录密码（同时用于加密同步）
-              </span>
+            <span className="mb-1.5 block text-sm text-muted">登录密码</span>
             <div className="relative">
               <Lock
                 size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
               />
               <input
                 type="password"
@@ -144,35 +136,44 @@ export function AuthPage() {
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="min-h-12 w-full rounded-2xl border border-[var(--color-line)] bg-transparent py-2.5 pl-10 pr-3 outline-none ring-[var(--color-accent)] focus:ring-2"
+                className="auth-field"
                 placeholder="至少 6 位"
               />
             </div>
+            <span className="mt-1.5 block text-xs text-muted">
+              同时用于加密同步，请妥善保管
+            </span>
           </label>
 
           {mode === 'register' && (
             <label className="block">
               <span className="mb-1.5 block text-sm text-muted">确认密码</span>
-              <input
-                type="password"
-                required
-                minLength={6}
-                autoComplete="new-password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                className="min-h-12 w-full rounded-2xl border border-[var(--color-line)] bg-transparent px-3 py-2.5 outline-none ring-[var(--color-accent)] focus:ring-2"
-                placeholder="再次输入登录密码"
-              />
+              <div className="relative">
+                <Lock
+                  size={16}
+                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
+                />
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  className="auth-field"
+                  placeholder="再次输入登录密码"
+                />
+              </div>
             </label>
           )}
 
           {error && (
-            <p className="rounded-xl bg-[color-mix(in_oklab,var(--color-danger)_12%,transparent)] px-3 py-2 text-sm text-[var(--color-danger)]">
+            <p className="rounded-2xl bg-[color-mix(in_oklab,var(--color-danger)_12%,transparent)] px-3.5 py-2.5 text-sm text-[var(--color-danger)]">
               {error}
             </p>
           )}
           {message && (
-            <p className="rounded-xl bg-[var(--color-accent-soft)] px-3 py-2 text-sm">
+            <p className="rounded-2xl bg-[var(--color-accent-soft)] px-3.5 py-2.5 text-sm">
               {message}
             </p>
           )}
@@ -180,11 +181,51 @@ export function AuthPage() {
           <button
             type="submit"
             disabled={loading}
-            className="min-h-12 w-full rounded-2xl bg-[var(--color-accent)] font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+            className="min-h-12 w-full rounded-2xl bg-[var(--color-accent)] text-base font-medium text-white shadow-[0_10px_28px_-12px_color-mix(in_oklab,var(--color-accent)_70%,transparent)] transition hover:opacity-95 active:scale-[0.99] disabled:opacity-60"
           >
-            {loading ? '处理中…' : mode === 'login' ? '登录' : '注册'}
+            {loading ? '处理中…' : mode === 'login' ? '进入账本' : '创建账号'}
           </button>
         </form>
+      </div>
+    </AuthShell>
+  )
+}
+
+function AuthShell({
+  theme,
+  onToggleTheme,
+  children,
+}: {
+  theme: string
+  onToggleTheme: () => void
+  children: ReactNode
+}) {
+  return (
+    <div className="relative flex min-h-dvh flex-col justify-center px-4 py-10 sm:px-6">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 overflow-hidden"
+      >
+        <div className="absolute -left-24 top-[-10%] h-[420px] w-[420px] rounded-full bg-[color-mix(in_oklab,var(--color-accent)_22%,transparent)] blur-3xl" />
+        <div className="absolute -right-16 bottom-[8%] h-[360px] w-[360px] rounded-full bg-[color-mix(in_oklab,#38bdf8_16%,transparent)] blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[color-mix(in_oklab,var(--color-accent)_10%,transparent)] to-transparent" />
+      </div>
+
+      <div className="relative mx-auto w-full max-w-md">
+        <div className="mb-4 flex justify-end">
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            className="touch-target inline-flex items-center justify-center rounded-2xl border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-surface-elevated)_80%,transparent)] backdrop-blur-sm transition hover:opacity-90"
+            aria-label="切换主题"
+          >
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+        </div>
+
+        <div className="rounded-[1.75rem] border border-[var(--color-line)] bg-[color-mix(in_oklab,var(--color-surface-elevated)_92%,transparent)] p-6 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.35)] backdrop-blur-md sm:p-8">
+          {children}
+        </div>
       </div>
     </div>
   )
@@ -208,7 +249,7 @@ function ModeTab({
       className={clsx(
         'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl text-sm font-medium transition',
         active
-          ? 'bg-[var(--color-accent)] text-white'
+          ? 'bg-[var(--color-surface-elevated)] text-[var(--color-ink)] shadow-sm'
           : 'text-muted hover:text-[var(--color-ink)]',
       )}
     >

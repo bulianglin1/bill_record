@@ -28,7 +28,7 @@ export async function registerUser(
   const client = requireClient()
   const normalized = email.trim().toLowerCase()
   if (!normalized) {
-    throw new Error('邮箱不能为空')
+    throw new Error('账号不能为空')
   }
   if (password.length < 6) {
     throw new Error('登录密码至少 6 位')
@@ -44,7 +44,7 @@ export async function registerUser(
     throw new Error(`查询用户失败: ${findError.message}`)
   }
   if (existing) {
-    throw new Error('该邮箱已注册，请直接登录')
+    throw new Error('该账号已注册，请直接登录')
   }
 
   const passwordSalt = createPasswordSalt()
@@ -62,7 +62,7 @@ export async function registerUser(
 
   if (error || !data) {
     if (error?.message?.toLowerCase().includes('duplicate')) {
-      throw new Error('该邮箱已注册，请直接登录')
+      throw new Error('该账号已注册，请直接登录')
     }
     throw new Error(error?.message ?? '注册失败')
   }
@@ -90,7 +90,7 @@ export async function loginUser(
 
   const row = data as UserRow | null
   if (!row) {
-    throw new Error('邮箱或密码错误')
+    throw new Error('账号或密码错误')
   }
 
   const ok = await verifyLoginPassword(
@@ -99,7 +99,7 @@ export async function loginUser(
     row.password_hash,
   )
   if (!ok) {
-    throw new Error('邮箱或密码错误')
+    throw new Error('账号或密码错误')
   }
 
   return { id: row.id, email: row.email }
