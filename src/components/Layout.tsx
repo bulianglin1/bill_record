@@ -7,6 +7,7 @@ import {
   Sun,
   Lock,
   Plus,
+  Scale,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTheme } from '@/context/ThemeContext'
@@ -15,7 +16,12 @@ import { useVault } from '@/context/VaultContext'
 import { useSwipeTabs } from '@/hooks/useSwipeTabs'
 import clsx from 'clsx'
 
-export type AppTab = 'dashboard' | 'transactions' | 'accounts' | 'settings'
+export type AppTab =
+  | 'dashboard'
+  | 'transactions'
+  | 'surplus'
+  | 'accounts'
+  | 'settings'
 
 interface LayoutProps {
   tab: AppTab
@@ -27,6 +33,7 @@ interface LayoutProps {
 const NAV: Array<{ id: AppTab; label: string; icon: typeof LayoutDashboard }> = [
   { id: 'dashboard', label: '看板', icon: LayoutDashboard },
   { id: 'transactions', label: '流水', icon: ArrowLeftRight },
+  { id: 'surplus', label: '结余', icon: Scale },
   { id: 'accounts', label: '账户', icon: Wallet },
   { id: 'settings', label: '设置', icon: Settings },
 ]
@@ -134,7 +141,7 @@ export function Layout({ tab, onTabChange, onQuickAdd, children }: LayoutProps) 
 
       {/* 手机：底部导航（大拇指热区） */}
       <nav
-        className="panel fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-20 grid grid-cols-4 gap-1 rounded-2xl p-1.5 md:hidden"
+        className="panel fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-20 grid grid-cols-5 gap-1 rounded-2xl p-1.5 md:hidden"
         aria-label="底部导航"
       >
         {NAV.map((item) => {

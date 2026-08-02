@@ -1,7 +1,13 @@
 import { useCallback, useRef, type TouchEvent } from 'react'
 import type { AppTab } from '@/components/Layout'
 
-const TAB_ORDER: AppTab[] = ['dashboard', 'transactions', 'accounts', 'settings']
+const TAB_ORDER: AppTab[] = [
+  'dashboard',
+  'transactions',
+  'surplus',
+  'accounts',
+  'settings',
+]
 const SWIPE_THRESHOLD = 56
 
 /**

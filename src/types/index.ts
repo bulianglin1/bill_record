@@ -78,3 +78,15 @@ export interface ImportResult {
   errors: string[]
   skipped: number
 }
+
+/** 账户 × 自然月的云端流水结余（手动重算写入） */
+export interface MonthlyAccountSurplus {
+  id: string
+  accountId: string
+  /** YYYY-MM */
+  yearMonth: string
+  income: number
+  expense: number
+  net: number
+  updatedAt: string
+}

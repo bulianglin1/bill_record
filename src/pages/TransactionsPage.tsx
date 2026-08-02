@@ -1,33 +1,72 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { ArrowDownUp, CalendarRange, Plus, Trash2 } from 'lucide-react'
+import {
+  ArrowDownUp,
+  CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react'
 import {
   EXPENSE_CATEGORIES,
   INCOME_CATEGORIES,
 } from '@/lib/constants'
 import { listAccounts } from '@/services/accountService'
 import {
+  listMonthlySurplus,
+  recalculateMonthlySurplus,
+} from '@/services/monthlySurplusService'
+import {
   createTransaction,
   deleteTransaction,
-  listTransactions,
+  listTransactionsPaged,
+  summarizeTransactions,
+  type CloudTransactionSummary,
+  type TransactionSortKey,
 } from '@/services/transactionService'
-import type { Account, Transaction, TransactionType } from '@/types'
+import type {
+  Account,
+  MonthlyAccountSurplus,
+  Transaction,
+  TransactionType,
+} from '@/types'
 import { formatMoney, formatDate, todayIsoDate } from '@/utils/format'
 
 interface TransactionsPageProps {
   refreshKey?: number
 }
 
-type SortKey = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'
+const PAGE_SIZE = 20
+
+const EMPTY_SUMMARY: CloudTransactionSummary = {
+  total: 0,
+  income: 0,
+  expense: 0,
+  incomeCount: 0,
+  expenseCount: 0,
+  transferCount: 0,
+  net: 0,
+}
 
 export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [summary, setSummary] = useState<CloudTransactionSummary>(EMPTY_SUMMARY)
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [error, setError] = useState('')
   const [filterAccountId, setFilterAccountId] = useState('')
   /** YYYY-MM；空字符串表示不限月份 */
   const [filterMonth, setFilterMonth] = useState('')
-  const [sortKey, setSortKey] = useState<SortKey>('date_desc')
+  const [sortKey, setSortKey] = useState<TransactionSortKey>('date_desc')
+  const [cloudSurplus, setCloudSurplus] = useState<MonthlyAccountSurplus | null>(
+    null,
+  )
+  const [cloudSurplusLoaded, setCloudSurplusLoaded] = useState(false)
+  const [cloudSurplusBusy, setCloudSurplusBusy] = useState(false)
+  const [cloudSurplusError, setCloudSurplusError] = useState('')
 
   const [form, setForm] = useState({
     date: todayIsoDate(),
@@ -39,21 +78,36 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
     note: '',
   })
 
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
   useEffect(() => {
     let cancelled = false
 
     void (async () => {
-      const [accs, txs] = await Promise.all([
+      const filter = {
+        accountId: filterAccountId || undefined,
+        yearMonth: filterMonth || undefined,
+      }
+      const [accs, paged, stats] = await Promise.all([
         listAccounts(),
-        // 月份 / 账户条件在云端过滤；相同条件进行中请求会在服务层去重
-        listTransactions({
-          accountId: filterAccountId || undefined,
-          yearMonth: filterMonth || undefined,
+        listTransactionsPaged({
+          ...filter,
+          page,
+          pageSize: PAGE_SIZE,
+          sortKey,
         }),
+        summarizeTransactions(filter),
       ])
       if (cancelled) return
       setAccounts(accs)
-      setTransactions(txs)
+      setTransactions(paged.items)
+      setTotal(paged.total)
+      setSummary(stats)
+      // 删到末页变空时回退一页
+      if (paged.items.length === 0 && page > 1 && paged.total > 0) {
+        setPage(Math.max(1, Math.ceil(paged.total / PAGE_SIZE)))
+        return
+      }
       if (accs[0]) {
         setForm((prev) =>
           prev.accountId ? prev : { ...prev, accountId: accs[0]!.id },
@@ -64,18 +118,82 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
     return () => {
       cancelled = true
     }
+  }, [filterAccountId, filterMonth, sortKey, page, refreshKey])
+
+  useEffect(() => {
+    if (!filterAccountId || !filterMonth) {
+      setCloudSurplus(null)
+      setCloudSurplusLoaded(false)
+      setCloudSurplusError('')
+      return
+    }
+    let cancelled = false
+    setCloudSurplusLoaded(false)
+    void (async () => {
+      try {
+        const list = await listMonthlySurplus({
+          accountId: filterAccountId,
+          startMonth: filterMonth,
+          endMonth: filterMonth,
+        })
+        if (cancelled) return
+        setCloudSurplus(list[0] ?? null)
+        setCloudSurplusError('')
+      } catch (err) {
+        if (!cancelled) {
+          setCloudSurplus(null)
+          setCloudSurplusError(
+            err instanceof Error ? err.message : '加载云端结余失败',
+          )
+        }
+      } finally {
+        if (!cancelled) setCloudSurplusLoaded(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [filterAccountId, filterMonth, refreshKey])
 
+  async function handleUpdateCloudSurplus() {
+    if (!filterAccountId || !filterMonth) return
+    setCloudSurplusBusy(true)
+    setCloudSurplusError('')
+    try {
+      const list = await recalculateMonthlySurplus(filterAccountId, [
+        filterMonth,
+      ])
+      setCloudSurplus(list.find((r) => r.yearMonth === filterMonth) ?? null)
+      setCloudSurplusLoaded(true)
+    } catch (err) {
+      setCloudSurplusError(err instanceof Error ? err.message : '更新云端结余失败')
+    } finally {
+      setCloudSurplusBusy(false)
+    }
+  }
+
   async function refresh() {
-    const [accs, txs] = await Promise.all([
+    const filter = {
+      accountId: filterAccountId || undefined,
+      yearMonth: filterMonth || undefined,
+    }
+    const [accs, paged, stats] = await Promise.all([
       listAccounts(),
-      listTransactions({
-        accountId: filterAccountId || undefined,
-        yearMonth: filterMonth || undefined,
+      listTransactionsPaged({
+        ...filter,
+        page,
+        pageSize: PAGE_SIZE,
+        sortKey,
       }),
+      summarizeTransactions(filter),
     ])
     setAccounts(accs)
-    setTransactions(txs)
+    setTransactions(paged.items)
+    setTotal(paged.total)
+    setSummary(stats)
+    if (paged.items.length === 0 && page > 1 && paged.total > 0) {
+      setPage(Math.max(1, Math.ceil(paged.total / PAGE_SIZE)))
+    }
     if (!form.accountId && accs[0]) {
       setForm((prev) => ({ ...prev, accountId: accs[0]!.id }))
     }
@@ -124,61 +242,13 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
     [accounts],
   )
 
-  const summary = useMemo(() => {
-    let income = 0
-    let expense = 0
-    let incomeCount = 0
-    let expenseCount = 0
-    let transferCount = 0
-    for (const t of transactions) {
-      if (t.type === 'income') {
-        income += t.amount
-        incomeCount += 1
-      } else if (t.type === 'expense') {
-        expense += t.amount
-        expenseCount += 1
-      } else {
-        transferCount += 1
-      }
-    }
-    return {
-      total: transactions.length,
-      income,
-      expense,
-      incomeCount,
-      expenseCount,
-      transferCount,
-      net: Math.round((income - expense) * 100) / 100,
-    }
-  }, [transactions])
-
-  const sortedTransactions = useMemo(() => {
-    const rows = [...transactions]
-    rows.sort((a, b) => {
-      if (sortKey === 'date_asc') {
-        if (a.date === b.date) return a.createdAt.localeCompare(b.createdAt)
-        return a.date.localeCompare(b.date)
-      }
-      if (sortKey === 'amount_desc') {
-        if (a.amount !== b.amount) return b.amount - a.amount
-        return b.date.localeCompare(a.date)
-      }
-      if (sortKey === 'amount_asc') {
-        if (a.amount !== b.amount) return a.amount - b.amount
-        return b.date.localeCompare(a.date)
-      }
-      // date_desc（默认）
-      if (a.date === b.date) return b.createdAt.localeCompare(a.createdAt)
-      return b.date.localeCompare(a.date)
-    })
-    return rows
-  }, [transactions, sortKey])
-
   function applyThisMonth() {
+    setPage(1)
     setFilterMonth(todayIsoDate().slice(0, 7))
   }
 
   function clearDateFilters() {
+    setPage(1)
     setFilterMonth('')
   }
 
@@ -202,7 +272,10 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
       <div className="flex flex-wrap items-center gap-2">
         <select
           value={filterAccountId}
-          onChange={(e) => setFilterAccountId(e.target.value)}
+          onChange={(e) => {
+            setPage(1)
+            setFilterAccountId(e.target.value)
+          }}
           className="panel rounded-xl px-3 py-2 text-sm"
         >
           <option value="">全部账户</option>
@@ -219,7 +292,10 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
             type="month"
             value={filterMonth}
             max={todayIsoDate().slice(0, 7)}
-            onChange={(e) => setFilterMonth(e.target.value)}
+            onChange={(e) => {
+              setPage(1)
+              setFilterMonth(e.target.value)
+            }}
             className="bg-transparent outline-none"
             aria-label="按月份筛选"
           />
@@ -242,7 +318,10 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
           <ArrowDownUp size={14} className="text-muted" />
           <select
             value={sortKey}
-            onChange={(e) => setSortKey(e.target.value as SortKey)}
+            onChange={(e) => {
+              setPage(1)
+              setSortKey(e.target.value as TransactionSortKey)
+            }}
             className="bg-transparent outline-none"
             aria-label="排序"
           >
@@ -272,6 +351,59 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
           tone={summary.net >= 0 ? 'income' : 'expense'}
         />
       </section>
+
+      {filterAccountId && filterMonth && (
+        <section className="panel space-y-2 rounded-3xl p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium">云端月结余</p>
+              <p className="text-xs text-muted">
+                与上方即时汇总独立；需手动更新后才会写入云端
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={cloudSurplusBusy}
+              onClick={() => void handleUpdateCloudSurplus()}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 text-sm disabled:opacity-50"
+            >
+              <RefreshCw
+                size={14}
+                className={cloudSurplusBusy ? 'animate-spin' : ''}
+              />
+              更新本月结余
+            </button>
+          </div>
+          {!cloudSurplusLoaded ? (
+            <p className="text-sm text-muted">加载中…</p>
+          ) : cloudSurplus ? (
+            <p className="text-sm">
+              <span className="text-[var(--color-income)]">
+                收 {formatMoney(cloudSurplus.income)}
+              </span>
+              {' · '}
+              <span className="text-[var(--color-expense)]">
+                支 {formatMoney(cloudSurplus.expense)}
+              </span>
+              {' · '}
+              <span
+                className={
+                  cloudSurplus.net >= 0
+                    ? 'font-medium text-[var(--color-income)]'
+                    : 'font-medium text-[var(--color-expense)]'
+                }
+              >
+                结余 {formatMoney(cloudSurplus.net, { sign: true })}
+              </span>
+            </p>
+          ) : (
+            <p className="text-sm text-muted">尚未更新</p>
+          )}
+          {cloudSurplusError && (
+            <p className="text-sm text-[var(--color-danger)]">{cloudSurplusError}</p>
+          )}
+        </section>
+      )}
 
       {showForm && (
         <form onSubmit={handleSubmit} className="panel space-y-3 rounded-3xl p-5">
@@ -397,11 +529,11 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
       )}
 
       <div className="panel overflow-hidden rounded-3xl">
-        {sortedTransactions.length === 0 ? (
+        {transactions.length === 0 ? (
           <p className="p-6 text-sm text-muted">暂无流水</p>
         ) : (
           <ul className="divide-y divide-[var(--color-line)]">
-            {sortedTransactions.map((t) => (
+            {transactions.map((t) => (
               <li key={t.id} className="flex items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -444,6 +576,34 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
           </ul>
         )}
       </div>
+
+      {total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-sm">
+          <p className="text-muted">
+            共 {total} 笔 · 第 {page} / {totalPages} 页（每页 {PAGE_SIZE}）
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-[var(--color-line)] px-3 disabled:opacity-40"
+            >
+              <ChevronLeft size={16} />
+              上一页
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-[var(--color-line)] px-3 disabled:opacity-40"
+            >
+              下一页
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .field-input {

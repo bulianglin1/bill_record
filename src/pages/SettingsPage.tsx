@@ -163,6 +163,9 @@ export function SettingsPage() {
             <li>
               资产快照 → <code>public.asset_snapshots</code>
             </li>
+            <li>
+              月结余 → <code>public.monthly_account_surplus</code>
+            </li>
           </ul>
         )}
       </section>

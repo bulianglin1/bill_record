@@ -7,6 +7,7 @@ import { QuickAddDialog } from '@/components/QuickAddDialog'
 import { AuthPage } from '@/pages/AuthPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { TransactionsPage } from '@/pages/TransactionsPage'
+import { MonthlySurplusPage } from '@/pages/MonthlySurplusPage'
 import { AccountsPage } from '@/pages/AccountsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 
@@ -89,6 +90,7 @@ function AppShell() {
       >
         {tab === 'dashboard' && <DashboardPage refreshKey={dataTick} />}
         {tab === 'transactions' && <TransactionsPage refreshKey={dataTick} />}
+        {tab === 'surplus' && <MonthlySurplusPage refreshKey={dataTick} />}
         {tab === 'accounts' && <AccountsPage refreshKey={dataTick} />}
         {tab === 'settings' && <SettingsPage />}
       </Layout>
