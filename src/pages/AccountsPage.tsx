@@ -10,6 +10,7 @@ import {
 import type { Account, AccountType } from '@/types'
 import { formatMoney } from '@/utils/format'
 import { AccountCard } from '@/components/AccountCard'
+import { SelectField } from '@/components/SelectField'
 import { useConfirm } from '@/context/ConfirmContext'
 
 const COLORS = ['#0d9488', '#7C3AED', '#0EA5E9', '#DC2626', '#EF4444', '#1677FF', '#07C160', '#F59E0B']
@@ -146,16 +147,17 @@ export function AccountsPage({ refreshKey = 0 }: AccountsPageProps) {
               />
             </Field>
             <Field label="类型">
-              <select
+              <SelectField
                 value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value as AccountType })}
-                className="w-full rounded-xl border border-[var(--color-line)] bg-transparent px-3 py-2.5 outline-none ring-[var(--color-accent)] focus:ring-2"
-              >
-                <option value="bank">银行</option>
-                <option value="payment">支付工具</option>
-                <option value="cash">现金</option>
-                <option value="other">其他</option>
-              </select>
+                onChange={(type) => setForm({ ...form, type: type as AccountType })}
+                aria-label="账户类型"
+                options={[
+                  { value: 'bank', label: '银行' },
+                  { value: 'payment', label: '支付工具' },
+                  { value: 'cash', label: '现金' },
+                  { value: 'other', label: '其他' },
+                ]}
+              />
             </Field>
             <Field label={editing ? '当前余额（手动校正）' : '初始余额'}>
               <input

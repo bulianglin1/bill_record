@@ -6,6 +6,7 @@ import {
   DialogTitle,
 } from '@headlessui/react'
 import { X } from 'lucide-react'
+import { SelectField } from '@/components/SelectField'
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/lib/constants'
 import { listAccounts } from '@/services/accountService'
 import { createTransaction } from '@/services/transactionService'
@@ -144,33 +145,23 @@ export function QuickAddDialog({ open, onClose, onSaved }: QuickAddDialogProps) 
 
             <label className="block">
               <span className="mb-1.5 block text-sm text-muted">账户</span>
-              <select
-                required
+              <SelectField
                 value={form.accountId}
-                onChange={(e) => setForm({ ...form, accountId: e.target.value })}
-                className="field-input"
-              >
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(accountId) => setForm({ ...form, accountId })}
+                aria-label="账户"
+                placeholder="请选择账户"
+                options={accounts.map((a) => ({ value: a.id, label: a.name }))}
+              />
             </label>
 
             <label className="block">
               <span className="mb-1.5 block text-sm text-muted">类别</span>
-              <select
+              <SelectField
                 value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="field-input"
-              >
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+                onChange={(category) => setForm({ ...form, category })}
+                aria-label="类别"
+                options={categories.map((c) => ({ value: c, label: c }))}
+              />
             </label>
 
             <label className="block">

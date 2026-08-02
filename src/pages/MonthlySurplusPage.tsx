@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { RefreshCw, Scale, Search } from 'lucide-react'
+import { RefreshCw, Scale, Search, X } from 'lucide-react'
+import { MonthPicker } from '@/components/MonthPicker'
+import { SelectField } from '@/components/SelectField'
 import { listAccounts, roundMoney } from '@/services/accountService'
 import {
   currentYearMonth,
@@ -13,7 +15,6 @@ import {
 import type { Account, MonthlyAccountSurplus } from '@/types'
 import { formatMoney } from '@/utils/format'
 
-const MONTH_OPTIONS_COUNT = 18
 const DEFAULT_ACCOUNT_NAME = '微信'
 
 interface MonthlySurplusPageProps {
@@ -28,9 +29,10 @@ interface MonthSummary {
   items: Array<MonthlyAccountSurplus & { accountName: string }>
 }
 
-function buildMonthOptions(endMonth: string, months = MONTH_OPTIONS_COUNT): string[] {
+/** 生成以 endMonth 为终点的近 N 个月（升序） */
+function buildRecentMonths(endMonth: string, count: number): string[] {
   const list: string[] = []
-  for (let i = months - 1; i >= 0; i -= 1) {
+  for (let i = count - 1; i >= 0; i -= 1) {
     list.push(shiftMonth(endMonth, -i))
   }
   return list
@@ -102,16 +104,16 @@ function buildMonthSummaries(
 
 export function MonthlySurplusPage({ refreshKey = 0 }: MonthlySurplusPageProps) {
   const thisMonth = currentYearMonth()
-  const monthOptions = useMemo(
-    () => buildMonthOptions(thisMonth, MONTH_OPTIONS_COUNT),
-    [thisMonth],
-  )
 
   const [accounts, setAccounts] = useState<Account[]>([])
   const [accountId, setAccountId] = useState('')
   const [selectedMonths, setSelectedMonths] = useState<string[]>([thisMonth])
   const [allRows, setAllRows] = useState<MonthlyAccountSurplus[]>([])
-  const [busy, setBusy] = useState(false)
+  /** 当前进行中的操作；用于禁用控件，且仅更新时转圈 */
+  const [busyAction, setBusyAction] = useState<
+    'query' | 'update' | 'updateAll' | null
+  >(null)
+  const busy = busyAction !== null
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
@@ -175,18 +177,23 @@ export function MonthlySurplusPage({ refreshKey = 0 }: MonthlySurplusPageProps) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey])
 
-  function toggleMonth(ym: string) {
+  function addMonth(ym: string) {
+    if (!ym) return
     setSelectedMonths((prev) =>
-      prev.includes(ym) ? prev.filter((m) => m !== ym) : [...prev, ym].sort(),
+      prev.includes(ym) ? prev : [...prev, ym].sort(),
     )
   }
 
+  function removeMonth(ym: string) {
+    setSelectedMonths((prev) => prev.filter((m) => m !== ym))
+  }
+
   function selectRecent(count: number) {
-    setSelectedMonths(monthOptions.slice(-count))
+    setSelectedMonths(buildRecentMonths(thisMonth, count))
   }
 
   async function handleQuery() {
-    setBusy(true)
+    setBusyAction('query')
     setError('')
     setMessage('')
     try {
@@ -199,7 +206,7 @@ export function MonthlySurplusPage({ refreshKey = 0 }: MonthlySurplusPageProps) 
     } catch (err) {
       setError(err instanceof Error ? err.message : '查询失败')
     } finally {
-      setBusy(false)
+      setBusyAction(null)
     }
   }
 
@@ -212,7 +219,7 @@ export function MonthlySurplusPage({ refreshKey = 0 }: MonthlySurplusPageProps) 
       setError('请至少选择一个月')
       return
     }
-    setBusy(true)
+    setBusyAction('update')
     setError('')
     setMessage('')
     try {
@@ -222,7 +229,7 @@ export function MonthlySurplusPage({ refreshKey = 0 }: MonthlySurplusPageProps) 
     } catch (err) {
       setError(err instanceof Error ? err.message : '更新失败')
     } finally {
-      setBusy(false)
+      setBusyAction(null)
     }
   }
 
@@ -235,7 +242,7 @@ export function MonthlySurplusPage({ refreshKey = 0 }: MonthlySurplusPageProps) 
       setError('请至少选择一个月')
       return
     }
-    setBusy(true)
+    setBusyAction('updateAll')
     setError('')
     setMessage('')
     try {
@@ -253,7 +260,7 @@ export function MonthlySurplusPage({ refreshKey = 0 }: MonthlySurplusPageProps) 
       }
       setError(err instanceof Error ? err.message : '批量更新失败')
     } finally {
-      setBusy(false)
+      setBusyAction(null)
     }
   }
 
@@ -275,35 +282,22 @@ export function MonthlySurplusPage({ refreshKey = 0 }: MonthlySurplusPageProps) 
       <section className="panel space-y-3 rounded-3xl p-4 sm:p-5">
         <label className="block text-sm">
           <span className="mb-1 block text-muted">账户</span>
-          <select
+          <SelectField
             value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            className="min-h-11 w-full rounded-xl border border-[var(--color-line)] bg-transparent px-3 py-2"
-          >
-            {accounts.length === 0 ? (
-              <option value="">暂无账户</option>
-            ) : (
-              accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))
-            )}
-          </select>
+            onChange={setAccountId}
+            aria-label="账户"
+            placeholder="暂无账户"
+            options={accounts.map((a) => ({ value: a.id, label: a.name }))}
+          />
         </label>
 
-        <div>
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-muted">选择月份（可多选）</p>
             <div className="flex flex-wrap gap-1.5">
               <QuickBtn label="近3月" onClick={() => selectRecent(3)} disabled={busy} />
               <QuickBtn label="近6月" onClick={() => selectRecent(6)} disabled={busy} />
               <QuickBtn label="近12月" onClick={() => selectRecent(12)} disabled={busy} />
-              <QuickBtn
-                label="全选"
-                onClick={() => setSelectedMonths([...monthOptions])}
-                disabled={busy}
-              />
               <QuickBtn
                 label="清空"
                 onClick={() => setSelectedMonths([])}
@@ -311,57 +305,67 @@ export function MonthlySurplusPage({ refreshKey = 0 }: MonthlySurplusPageProps) 
               />
             </div>
           </div>
-          <div className="grid max-h-48 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4 md:grid-cols-6">
-            {monthOptions.map((ym) => {
-              const checked = selectedMonths.includes(ym)
-              return (
-                <label
-                  key={ym}
-                  className={
-                    checked
-                      ? 'flex cursor-pointer items-center gap-1.5 rounded-xl border border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_12%,transparent)] px-2 py-2 text-xs'
-                      : 'flex cursor-pointer items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-2 py-2 text-xs'
-                  }
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
+          <MonthPicker
+            value=""
+            placeholder="添加月份"
+            max={thisMonth}
+            onChange={addMonth}
+            aria-label="添加月份"
+            className={busy ? 'pointer-events-none opacity-50' : undefined}
+          />
+          {selectedMonths.length === 0 ? (
+            <p className="text-xs text-muted">尚未选择月份；查询未选时显示全部已存结余。</p>
+          ) : (
+            <ul className="flex flex-wrap gap-1.5">
+              {[...selectedMonths].sort((a, b) => b.localeCompare(a)).map((ym) => (
+                <li key={ym}>
+                  <button
+                    type="button"
                     disabled={busy}
-                    onChange={() => toggleMonth(ym)}
-                  />
-                  <span>{formatMonthLabel(ym)}</span>
-                </label>
-              )
-            })}
-          </div>
+                    onClick={() => removeMonth(ym)}
+                    className="inline-flex items-center gap-1 rounded-xl border border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_12%,transparent)] px-2.5 py-1.5 text-xs disabled:opacity-50"
+                    aria-label={`移除 ${formatMonthLabel(ym)}`}
+                  >
+                    {formatMonthLabel(ym)}
+                    <X size={12} className="opacity-70" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <button
             type="button"
             disabled={busy}
             onClick={() => void handleQuery()}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--color-line)] px-4 text-sm disabled:opacity-50"
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-[var(--color-line)] px-2 text-sm disabled:opacity-50"
           >
-            <Search size={16} />
+            <Search size={16} className="shrink-0" />
             查询
           </button>
           <button
             type="button"
             disabled={busy || !accountId || selectedMonths.length === 0}
             onClick={() => void handleUpdateCurrentAccount()}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[var(--color-accent)] px-4 text-sm font-medium text-white disabled:opacity-50"
+            title="更新当前账户所选月份"
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-[var(--color-accent)] px-2 text-sm font-medium text-white disabled:opacity-50"
           >
-            <RefreshCw size={16} className={busy ? 'animate-spin' : ''} />
-            更新所选月份
+            <RefreshCw
+              size={16}
+              className={`shrink-0 ${busyAction === 'update' ? 'animate-spin' : ''}`}
+            />
+            更新
           </button>
           <button
             type="button"
             disabled={busy || accounts.length === 0 || selectedMonths.length === 0}
             onClick={() => void handleUpdateAllAccounts()}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--color-line)] px-4 text-sm disabled:opacity-50"
+            title="更新全部账户的所选月份"
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-[var(--color-line)] px-2 text-sm disabled:opacity-50"
           >
-            更新全部账户的所选月份
+            全账户
           </button>
         </div>
       </section>
@@ -369,7 +373,7 @@ export function MonthlySurplusPage({ refreshKey = 0 }: MonthlySurplusPageProps) 
       <section className="panel space-y-3 rounded-3xl p-4 sm:p-5">
         <h2 className="font-display text-lg font-semibold">全部账户结余汇总</h2>
         <p className="text-xs text-muted">
-          按勾选月份汇总各账户云端结余（未勾选月份时显示全部已存）。点「查询」刷新。
+          按所选月份汇总各账户云端结余（未选月份时显示全部已存）。点「查询」刷新。
         </p>
         {monthSummaries.length === 0 ? (
           <p className="text-sm text-muted">暂无汇总数据，请先更新或调整月份后查询。</p>

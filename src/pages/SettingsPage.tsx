@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from 'react'
+import { useEffect, useState, type ChangeEvent } from 'react'
 import {
   FileUp,
   LogOut,
@@ -7,6 +7,7 @@ import {
   UserRound,
   Cloud,
 } from 'lucide-react'
+import { SelectField } from '@/components/SelectField'
 import { useAuth } from '@/context/AuthContext'
 import { useVault } from '@/context/VaultContext'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -38,10 +39,28 @@ export function SettingsPage() {
     return hit?.id ?? accs[0]?.id ?? ''
   }
 
-  /**
-   * 账户列表仅服务账单导入下拉框：进入设置页不预拉，
-   * 首次展开/导入时再请求，避免无意义的 accounts 请求。
-   */
+  /** 进入设置页即拉取账户，供导入下拉直接选用 */
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const accs = await listAccounts()
+        if (cancelled) return
+        setAccounts(accs)
+        setImportAccountId((prev) =>
+          pickDefaultImportAccount(accs, importSource, prev),
+        )
+      } catch {
+        // 列表加载失败时保持空选项，导入时再提示
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // 仅首载；切换来源时用已有 accounts 重选默认账户即可
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function ensureAccounts(): Promise<Account[]> {
     if (accounts.length > 0) return accounts
     const accs = await listAccounts()
@@ -176,35 +195,26 @@ export function SettingsPage() {
           微信支持 xlsx/csv；支付宝支持导出 CSV（GBK 编码可直接导入）。请选对来源与目标账户。
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
-          <select
+          <SelectField
             value={importSource}
-            onFocus={() => void ensureAccounts()}
-            onChange={(e) => {
-              const source = e.target.value as 'wechat' | 'alipay'
-              setImportSource(source)
-              setImportAccountId(pickDefaultImportAccount(accounts, source, ''))
+            onChange={(source) => {
+              const next = source as 'wechat' | 'alipay'
+              setImportSource(next)
+              setImportAccountId(pickDefaultImportAccount(accounts, next, ''))
             }}
-            className="min-h-11 rounded-xl border border-[var(--color-line)] bg-transparent px-3 py-2 text-sm"
-          >
-            <option value="wechat">微信账单（xlsx / csv）</option>
-            <option value="alipay">支付宝账单 CSV</option>
-          </select>
-          <select
+            aria-label="导入来源"
+            options={[
+              { value: 'wechat', label: '微信账单（xlsx / csv）' },
+              { value: 'alipay', label: '支付宝账单 CSV' },
+            ]}
+          />
+          <SelectField
             value={importAccountId}
-            onFocus={() => void ensureAccounts()}
-            onChange={(e) => setImportAccountId(e.target.value)}
-            className="min-h-11 rounded-xl border border-[var(--color-line)] bg-transparent px-3 py-2 text-sm"
-          >
-            {accounts.length === 0 ? (
-              <option value="">点击加载账户…</option>
-            ) : (
-              accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))
-            )}
-          </select>
+            onChange={setImportAccountId}
+            aria-label="导入目标账户"
+            placeholder={accounts.length === 0 ? '暂无账户' : '请选择账户'}
+            options={accounts.map((a) => ({ value: a.id, label: a.name }))}
+          />
         </div>
         <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-[var(--color-line)] px-4 py-2 text-sm">
           <FileUp size={16} />

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import {
-  ArrowDownUp,
   ChevronLeft,
   ChevronRight,
   Plus,
@@ -9,6 +8,7 @@ import {
 } from 'lucide-react'
 import { DatePicker } from '@/components/DatePicker'
 import { MonthPicker } from '@/components/MonthPicker'
+import { SelectField } from '@/components/SelectField'
 import { useConfirm } from '@/context/ConfirmContext'
 import {
   EXPENSE_CATEGORIES,
@@ -270,16 +270,6 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
     [accounts],
   )
 
-  function applyThisMonth() {
-    setPage(1)
-    setFilterMonth(todayIsoDate().slice(0, 7))
-  }
-
-  function clearDateFilters() {
-    setPage(1)
-    setFilterMonth('')
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -297,64 +287,48 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <select
+      <div className="grid grid-cols-3 gap-2">
+        <SelectField
           value={filterAccountId}
-          onChange={(e) => {
+          onChange={(v) => {
             setPage(1)
-            setFilterAccountId(e.target.value)
+            setFilterAccountId(v)
           }}
-          className="select-field"
-        >
-          <option value="">全部账户</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+          aria-label="按账户筛选"
+          className="min-w-0"
+          options={[
+            { value: '', label: '全部账户' },
+            ...accounts.map((a) => ({ value: a.id, label: a.name })),
+          ]}
+        />
         <MonthPicker
           value={filterMonth}
           max={todayIsoDate().slice(0, 7)}
           allowClear
           placeholder="全部月份"
           aria-label="按月份筛选"
+          className="min-w-0"
+          buttonClassName="w-full justify-between"
           onChange={(v) => {
             setPage(1)
             setFilterMonth(v)
           }}
         />
-        <button
-          type="button"
-          onClick={applyThisMonth}
-          className="rounded-xl border border-[var(--color-line)] px-3 py-2 text-sm text-muted"
-        >
-          本月
-        </button>
-        <button
-          type="button"
-          onClick={clearDateFilters}
-          className="rounded-xl border border-[var(--color-line)] px-3 py-2 text-sm text-muted"
-        >
-          全部日期
-        </button>
-        <label className="inline-flex items-center gap-2">
-          <ArrowDownUp size={14} className="text-muted" />
-          <select
-            value={sortKey}
-            onChange={(e) => {
-              setPage(1)
-              setSortKey(e.target.value as TransactionSortKey)
-            }}
-            className="select-field"
-            aria-label="排序"
-          >
-            <option value="date_desc">日期从新到旧</option>
-            <option value="date_asc">日期从旧到新</option>
-            <option value="amount_desc">金额从大到小</option>
-            <option value="amount_asc">金额从小到大</option>
-          </select>
-        </label>
+        <SelectField
+          value={sortKey}
+          onChange={(v) => {
+            setPage(1)
+            setSortKey(v as TransactionSortKey)
+          }}
+          aria-label="排序"
+          className="min-w-0"
+          options={[
+            { value: 'date_desc', label: '日期新→旧' },
+            { value: 'date_asc', label: '日期旧→新' },
+            { value: 'amount_desc', label: '金额大→小' },
+            { value: 'amount_asc', label: '金额小→大' },
+          ]}
+        />
       </div>
 
       <section className="panel grid grid-cols-2 gap-3 rounded-3xl p-4 sm:grid-cols-4">
@@ -453,13 +427,12 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
               />
             </Field>
             <Field label="类型">
-              <select
+              <SelectField
                 value={form.type}
-                onChange={(e) => {
-                  const type = e.target.value as TransactionType
+                onChange={(type) => {
                   setForm({
                     ...form,
-                    type,
+                    type: type as TransactionType,
                     category:
                       type === 'income'
                         ? INCOME_CATEGORIES[0]
@@ -468,58 +441,46 @@ export function TransactionsPage({ refreshKey = 0 }: TransactionsPageProps) {
                           : EXPENSE_CATEGORIES[0],
                   })
                 }}
-                className="field-input"
-              >
-                <option value="expense">支出</option>
-                <option value="income">收入</option>
-                <option value="transfer">转账</option>
-              </select>
+                aria-label="流水类型"
+                options={[
+                  { value: 'expense', label: '支出' },
+                  { value: 'income', label: '收入' },
+                  { value: 'transfer', label: '转账' },
+                ]}
+              />
             </Field>
             <Field label={form.type === 'transfer' ? '转出账户' : '账户'}>
-              <select
-                required
+              <SelectField
                 value={form.accountId}
-                onChange={(e) => setForm({ ...form, accountId: e.target.value })}
-                className="field-input"
-              >
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(accountId) => setForm({ ...form, accountId })}
+                aria-label={form.type === 'transfer' ? '转出账户' : '账户'}
+                placeholder="请选择账户"
+                options={accounts.map((a) => ({ value: a.id, label: a.name }))}
+              />
             </Field>
             {form.type === 'transfer' && (
               <Field label="转入账户">
-                <select
-                  required
+                <SelectField
                   value={form.toAccountId}
-                  onChange={(e) => setForm({ ...form, toAccountId: e.target.value })}
-                  className="field-input"
-                >
-                  <option value="">请选择</option>
-                  {accounts
-                    .filter((a) => a.id !== form.accountId)
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                </select>
+                  onChange={(toAccountId) => setForm({ ...form, toAccountId })}
+                  aria-label="转入账户"
+                  placeholder="请选择"
+                  options={[
+                    { value: '', label: '请选择' },
+                    ...accounts
+                      .filter((a) => a.id !== form.accountId)
+                      .map((a) => ({ value: a.id, label: a.name })),
+                  ]}
+                />
               </Field>
             )}
             <Field label="类别">
-              <select
+              <SelectField
                 value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="field-input"
-              >
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+                onChange={(category) => setForm({ ...form, category })}
+                aria-label="类别"
+                options={categories.map((c) => ({ value: c, label: c }))}
+              />
             </Field>
             <Field label="备注">
               <input
